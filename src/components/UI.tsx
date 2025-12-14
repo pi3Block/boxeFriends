@@ -1,5 +1,6 @@
 import { useCallback, useRef, type ChangeEvent } from 'react'
 import { useGameStore } from '../stores'
+import { CharacterSelector } from './CharacterSelector'
 
 /**
  * Composant UI overlay (HTML au-dessus du Canvas)
@@ -10,6 +11,7 @@ export function UI() {
   const opponentHp = useGameStore((state) => state.opponentHp)
   const comboCount = useGameStore((state) => state.comboCount)
   const opponentTexture = useGameStore((state) => state.opponentTexture)
+  const isCustomTexture = useGameStore((state) => state.isCustomTexture)
   const setTexture = useGameStore((state) => state.setTexture)
   const startFight = useGameStore((state) => state.startFight)
   const resetGame = useGameStore((state) => state.resetGame)
@@ -57,37 +59,36 @@ export function UI() {
 
       {/* LOBBY */}
       {gameState === 'LOBBY' && (
-        <div className="pointer-events-auto flex flex-1 flex-col items-center justify-center gap-6 bg-black/50">
+        <div className="pointer-events-auto flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto bg-black/50 py-8">
           <h1 className="text-4xl font-bold text-white">FACE PUNCHER</h1>
 
+          {/* Sélecteur de personnage */}
+          <CharacterSelector />
+
           {/* Preview de la photo */}
-          {opponentTexture && (
-            <div className="h-32 w-32 overflow-hidden rounded-full border-4 border-white">
-              <img
-                src={opponentTexture}
-                alt="Opponent"
-                className="h-full w-full object-cover"
-              />
-            </div>
-          )}
+          <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white">
+            <img
+              src={opponentTexture}
+              alt="Opponent"
+              className="h-full w-full object-cover"
+            />
+          </div>
 
           {/* Bouton upload */}
           <button
             onClick={handleUploadClick}
             className="rounded-lg bg-blue-600 px-6 py-3 font-bold text-white transition hover:bg-blue-700"
           >
-            {opponentTexture ? 'Changer la photo' : 'Choisir une photo'}
+            {isCustomTexture ? 'Changer la photo' : 'Choisir une photo (visage)'}
           </button>
 
           {/* Bouton start */}
-          {opponentTexture && (
-            <button
-              onClick={startFight}
-              className="rounded-lg bg-red-600 px-8 py-4 text-xl font-bold text-white transition hover:bg-red-700"
-            >
-              FIGHT!
-            </button>
-          )}
+          <button
+            onClick={startFight}
+            className="rounded-lg bg-red-600 px-8 py-4 text-xl font-bold text-white transition hover:bg-red-700"
+          >
+            FIGHT!
+          </button>
         </div>
       )}
 

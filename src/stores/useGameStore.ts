@@ -11,6 +11,11 @@ export type GameState = 'LOBBY' | 'FIGHTING' | 'KO'
 export type PunchType = 'jab' | 'hook' | 'uppercut'
 
 /**
+ * Texture par défaut de l'adversaire
+ */
+export const DEFAULT_OPPONENT_TEXTURE = '/textures/default-face.png'
+
+/**
  * Interface du store principal du jeu
  */
 interface GameStore {
@@ -24,7 +29,8 @@ interface GameStore {
 
   // Stats Adversaire
   opponentHp: number // 0-100
-  opponentTexture: string | null // URL blob de la photo uploadée
+  opponentTexture: string // URL de la texture (défaut ou blob uploadé)
+  isCustomTexture: boolean // true si l'utilisateur a uploadé une photo
 
   // Timestamp du dernier coup (pour reset combo)
   lastHitTime: number
@@ -56,21 +62,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
   comboMeter: 0,
   comboCount: 0,
   opponentHp: 100,
-  opponentTexture: null,
+  opponentTexture: DEFAULT_OPPONENT_TEXTURE,
+  isCustomTexture: false,
   lastHitTime: 0,
 
-  // Définir la texture de l'adversaire
+  // Définir la texture de l'adversaire (upload utilisateur)
   setTexture: (url: string) => {
-    set({ opponentTexture: url })
-  },
-
-  // Effacer la texture
-  clearTexture: () => {
     const state = get()
-    if (state.opponentTexture) {
+    // Révoquer l'ancienne URL blob si c'était une texture custom
+    if (state.isCustomTexture && state.opponentTexture !== DEFAULT_OPPONENT_TEXTURE) {
       URL.revokeObjectURL(state.opponentTexture)
     }
-    set({ opponentTexture: null })
+    set({ opponentTexture: url, isCustomTexture: true })
+  },
+
+  // Restaurer la texture par défaut
+  clearTexture: () => {
+    const state = get()
+    // Révoquer l'URL blob si c'était une texture custom
+    if (state.isCustomTexture && state.opponentTexture !== DEFAULT_OPPONENT_TEXTURE) {
+      URL.revokeObjectURL(state.opponentTexture)
+    }
+    set({ opponentTexture: DEFAULT_OPPONENT_TEXTURE, isCustomTexture: false })
   },
 
   // Infliger des dégâts à l'adversaire
@@ -138,7 +151,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Démarrer le combat
   startFight: () => {
     const state = get()
-    if (state.gameState === 'LOBBY' && state.opponentTexture) {
+    // On peut toujours démarrer car on a toujours une texture (défaut ou custom)
+    if (state.gameState === 'LOBBY') {
       set({ gameState: 'FIGHTING' })
     }
   },
@@ -146,7 +160,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Reset complet du jeu
   resetGame: () => {
     const state = get()
-    if (state.opponentTexture) {
+    // Révoquer l'URL blob si c'était une texture custom
+    if (state.isCustomTexture && state.opponentTexture !== DEFAULT_OPPONENT_TEXTURE) {
       URL.revokeObjectURL(state.opponentTexture)
     }
 
@@ -156,7 +171,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       comboMeter: 0,
       comboCount: 0,
       opponentHp: 100,
-      opponentTexture: null,
+      opponentTexture: DEFAULT_OPPONENT_TEXTURE,
+      isCustomTexture: false,
       lastHitTime: 0,
     })
   },

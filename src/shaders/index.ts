@@ -1,0 +1,1 @@
+export { DeformableFaceMaterial } from './DeformableFaceMaterial'
