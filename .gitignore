@@ -1,8 +1,3 @@
-# Protection : Ne jamais tracker le dossier utilisateur parent
-/Users/
-/Pierro/
-../
-
 # Logs
 logs
 *.log
@@ -12,9 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
 dist
 dist-ssr
+build/
+.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
 *.local
 
 # Editor directories and files
@@ -28,20 +36,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Build outputs
-build/
-.vite/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Assets (si volumineux)
-/meshes/*.*
-*.fbx
-
-# Python virtual environment
+# Assets volumineux (optionnel - décommentez si vous ne voulez pas les tracker)
+ /meshes/*.*
+# Python virtual environment (si vous en utilisez un)
 .venv/
 __pycache__/
 *.pyc
