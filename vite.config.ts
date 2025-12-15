@@ -10,4 +10,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // Configuration explicite pour s'assurer que les assets du dossier public sont copiés
+  publicDir: 'public',
+  build: {
+    // S'assurer que les assets statiques sont bien copiés
+    copyPublicDir: true,
+    // Augmenter la limite de taille pour les gros assets (textures, meshes)
+    chunkSizeWarningLimit: 1000,
+  },
 })

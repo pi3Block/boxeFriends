@@ -153,8 +153,8 @@ export function JellyHeadOpponent({ textureUrl }: JellyHeadOpponentProps) {
       />
 
       {/* Oreilles */}
-      <Ear side="left" position={[-0.38, 0.02, 0]} />
-      <Ear side="right" position={[0.38, 0.02, 0]} />
+      <Ear side="left" position={[-0.32, 0.02, 0]} />
+      <Ear side="right" position={[0.32, 0.02, 0]} />
     </group>
   )
 }

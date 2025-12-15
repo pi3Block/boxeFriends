@@ -98,8 +98,8 @@ export function Eye({ side, position, popIntensity = 0, onHit }: EyeProps) {
       const pupilScale = 1 + pop * 0.35
       pupilRef.current.scale.setScalar(pupilScale)
 
-      // Décalage de la pupille
-      pupilRef.current.position.z = 0.035 + pop * 0.015
+      // Décalage de la pupille (base: 0.0455)
+      pupilRef.current.position.z = 0.0455 + pop * 0.015
     }
   })
 
@@ -114,9 +114,9 @@ export function Eye({ side, position, popIntensity = 0, onHit }: EyeProps) {
         <meshStandardMaterial color="white" roughness={0.3} metalness={0} />
       </mesh>
 
-      {/* Iris */}
-      <mesh position={[0, 0, 0.025]}>
-        <circleGeometry args={[0.025, 16]} />
+      {/* Iris - positionné à la surface de la sphère (rayon 0.045) */}
+      <mesh position={[0, 0, 0.044]}>
+        <circleGeometry args={[0.022, 16]} />
         <meshStandardMaterial
           color={irisColor}
           roughness={0.4}
@@ -124,15 +124,15 @@ export function Eye({ side, position, popIntensity = 0, onHit }: EyeProps) {
         />
       </mesh>
 
-      {/* Pupille */}
-      <mesh ref={pupilRef} position={[0, 0, 0.035]}>
-        <circleGeometry args={[0.012, 12]} />
+      {/* Pupille - légèrement devant l'iris */}
+      <mesh ref={pupilRef} position={[0, 0, 0.0455]}>
+        <circleGeometry args={[0.01, 12]} />
         <meshBasicMaterial color="black" />
       </mesh>
 
       {/* Reflet (highlight) */}
-      <mesh position={[0.01, 0.015, 0.04]}>
-        <circleGeometry args={[0.006, 8]} />
+      <mesh position={[0.008, 0.012, 0.047]}>
+        <circleGeometry args={[0.005, 8]} />
         <meshBasicMaterial color="white" transparent opacity={0.9} />
       </mesh>
     </group>

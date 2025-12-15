@@ -20,12 +20,12 @@ interface TextureSettingsStore extends TextureSettings {
 }
 
 /**
- * Valeurs par défaut pour l'image par défaut de l'opposant
+ * Valeurs par défaut pour l'image par défaut de l'opposant (JellyHead)
  */
 export const DEFAULT_TEXTURE_SETTINGS: TextureSettings = {
-  zoom: 1.1,      // Zoom pour l'image par défaut
-  offsetX: 0.30,  // Décalage horizontal pour l'image par défaut
-  offsetY: 0.05,  // Décalage vertical pour l'image par défaut
+  zoom: 1.2,      // Zoom pour JellyHead
+  offsetX: 0.05,  // Décalage horizontal pour JellyHead
+  offsetY: 0.00,  // Décalage vertical pour JellyHead
 }
 
 export const useTextureSettingsStore = create<TextureSettingsStore>((set) => ({

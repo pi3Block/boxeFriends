@@ -288,7 +288,7 @@ export function Cranium({ textureUrl, wobbleIntensity = 0, onHit }: CraniumProps
   const texture = useMemo(() => {
     if (!textureUrl) return null
     const tex = new THREE.TextureLoader().load(textureUrl)
-    tex.flipY = true
+    tex.flipY = false // Ne pas inverser pour projection sphérique
     return tex
   }, [textureUrl])
 
