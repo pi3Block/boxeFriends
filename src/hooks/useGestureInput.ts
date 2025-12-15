@@ -150,50 +150,82 @@ export function useGestureInput({ onPunch, enabled = true }: GestureConfig) {
 }
 
 /**
- * Hook simplifié pour utiliser uniquement le drag
+ * Callbacks pour le nouveau système de gestes
  */
-export function usePunchDrag(onPunch: (data: PunchData) => void, enabled = true) {
+export interface PunchDragCallbacks {
+  onDragStart?: (screenX: number, screenY: number) => void
+  onDragMove?: (screenX: number, screenY: number) => void
+  onDragEnd: (data: PunchData) => void
+}
+
+/**
+ * Hook amélioré pour la gestion des gestes de boxe
+ * - onDragStart : appelé quand le doigt/clic commence (gant commence à suivre)
+ * - onDragMove : appelé pendant le mouvement (gant suit)
+ * - onDragEnd : appelé au relâchement (coup déclenché)
+ */
+export function usePunchDrag(callbacks: PunchDragCallbacks, enabled = true) {
+  const { onDragStart, onDragMove, onDragEnd } = callbacks
+
   const bind = useDrag(
-    ({ movement: [dx, dy], velocity: [vx, vy], xy: [x, y], tap }) => {
+    ({ movement: [dx, dy], velocity: [vx, vy], xy: [x, y], first, last, tap, active }) => {
       if (!enabled) return
 
-      // Tap → Jab
+      // Premier contact : démarrer le suivi
+      if (first && !tap) {
+        onDragStart?.(x, y)
+        return
+      }
+
+      // Pendant le drag : mettre à jour la position
+      if (active && !first && !last && !tap) {
+        onDragMove?.(x, y)
+        return
+      }
+
+      // Tap rapide → Jab immédiat
       if (tap) {
-        onPunch({
+        onDragEnd({
           type: 'jab',
-          velocity: 0.5,
+          velocity: 0.6,
           direction: [0, 0],
           screenPosition: [x, y],
         })
         return
       }
 
-      const distance = Math.sqrt(dx * dx + dy * dy)
-      if (distance < SWIPE_THRESHOLD) return
+      // Relâchement → déclencher le coup
+      if (last) {
+        const distance = Math.sqrt(dx * dx + dy * dy)
+        const totalVelocity = Math.sqrt(vx * vx + vy * vy)
 
-      const totalVelocity = Math.sqrt(vx * vx + vy * vy)
-      if (totalVelocity < VELOCITY_THRESHOLD) return
+        const absX = Math.abs(dx)
+        const absY = Math.abs(dy)
 
-      const absX = Math.abs(dx)
-      const absY = Math.abs(dy)
+        // Déterminer le type de coup
+        let type: PunchType = 'jab'
+        if (distance >= SWIPE_THRESHOLD) {
+          if (absY > absX * VERTICAL_RATIO && dy < 0) {
+            type = 'uppercut'
+          } else if (absX > absY) {
+            type = 'hook'
+          }
+        }
 
-      let type: PunchType = 'jab'
-      if (absY > absX * VERTICAL_RATIO && dy < 0) {
-        type = 'uppercut'
-      } else if (absX > absY) {
-        type = 'hook'
+        // Calculer la vélocité (minimum 0.5 pour que le coup soit visible)
+        const normalizedVelocity = Math.max(0.5, Math.min(totalVelocity / MAX_VELOCITY, 1))
+
+        onDragEnd({
+          type,
+          velocity: normalizedVelocity,
+          direction: [dx === 0 ? 0 : dx / (absX || 1), dy === 0 ? 0 : dy / (absY || 1)],
+          screenPosition: [x, y],
+        })
       }
-
-      onPunch({
-        type,
-        velocity: Math.min(totalVelocity / MAX_VELOCITY, 1),
-        direction: [dx === 0 ? 0 : dx / absX, dy === 0 ? 0 : dy / absY],
-        screenPosition: [x, y],
-      })
     },
     {
       filterTaps: true,
-      threshold: 5,
+      threshold: 3, // Seuil bas pour répondre vite
     }
   )
 

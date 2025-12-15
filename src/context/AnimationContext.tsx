@@ -1,7 +1,10 @@
 import { createContext, useContext, useRef, useCallback, type ReactNode } from 'react'
 import gsap from 'gsap'
-import type { Mesh, Camera } from 'three'
+import type { Object3D, Camera } from 'three'
 import type { PunchType } from '../stores'
+
+// Type pour les gants (peut être Group ou Mesh)
+type GloveObject = Object3D | null
 
 /**
  * Configuration des animations par type de coup
@@ -41,37 +44,58 @@ const REST_POSITIONS = {
   right: { x: 0.8, y: -0.6, z: 2 },
 }
 
+/**
+ * Interface pour les fonctions de gants exposées
+ */
+interface GlovesFunctions {
+  startFollowing: (screenX: number, screenY: number) => void
+  updateFollowing: (screenX: number, screenY: number) => void
+  punchAndRelease: (screenX: number, screenY: number) => void
+}
+
 interface AnimationContextType {
-  registerGloves: (left: Mesh | null, right: Mesh | null) => void
+  registerGloves: (left: GloveObject, right: GloveObject) => void
   registerCamera: (camera: Camera) => void
-  registerGlovesPunchAt: (punchAt: (screenX: number, screenY: number) => void) => void
+  registerGlovesFunctions: (funcs: GlovesFunctions) => void
   triggerPunch: (type: PunchType, hand: 'left' | 'right', velocity: number, isCritical: boolean) => void
-  triggerPunchAt: (screenX: number, screenY: number) => void
+  // Nouvelles fonctions pour le système de suivi
+  startGloveFollow: (screenX: number, screenY: number) => void
+  updateGloveFollow: (screenX: number, screenY: number) => void
+  triggerPunchRelease: (screenX: number, screenY: number) => void
   triggerCameraShake: (intensity: number) => void
 }
 
 const AnimationContext = createContext<AnimationContextType | null>(null)
 
 export function AnimationProvider({ children }: { children: ReactNode }) {
-  const leftGloveRef = useRef<Mesh | null>(null)
-  const rightGloveRef = useRef<Mesh | null>(null)
+  const leftGloveRef = useRef<GloveObject>(null)
+  const rightGloveRef = useRef<GloveObject>(null)
   const cameraRef = useRef<Camera | null>(null)
-  const punchAtRef = useRef<((screenX: number, screenY: number) => void) | null>(null)
+  const glovesFuncsRef = useRef<GlovesFunctions | null>(null)
   const isAnimating = useRef(false)
 
-  const registerGloves = useCallback((left: Mesh | null, right: Mesh | null) => {
+  const registerGloves = useCallback((left: GloveObject, right: GloveObject) => {
     leftGloveRef.current = left
     rightGloveRef.current = right
   }, [])
 
-  const registerGlovesPunchAt = useCallback((punchAt: (screenX: number, screenY: number) => void) => {
-    punchAtRef.current = punchAt
+  const registerGlovesFunctions = useCallback((funcs: GlovesFunctions) => {
+    glovesFuncsRef.current = funcs
   }, [])
 
-  const triggerPunchAt = useCallback((screenX: number, screenY: number) => {
-    if (punchAtRef.current) {
-      punchAtRef.current(screenX, screenY)
-    }
+  // Nouvelle fonction : démarrer le suivi
+  const startGloveFollow = useCallback((screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.startFollowing(screenX, screenY)
+  }, [])
+
+  // Nouvelle fonction : mettre à jour le suivi
+  const updateGloveFollow = useCallback((screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.updateFollowing(screenX, screenY)
+  }, [])
+
+  // Nouvelle fonction : déclencher le coup au relâchement
+  const triggerPunchRelease = useCallback((screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.punchAndRelease(screenX, screenY)
   }, [])
 
   const registerCamera = useCallback((camera: Camera) => {
@@ -195,9 +219,11 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
       value={{
         registerGloves,
         registerCamera,
-        registerGlovesPunchAt,
+        registerGlovesFunctions,
         triggerPunch,
-        triggerPunchAt,
+        startGloveFollow,
+        updateGloveFollow,
+        triggerPunchRelease,
         triggerCameraShake,
       }}
     >

@@ -1,7 +1,7 @@
-import { forwardRef, useImperativeHandle, useRef, useEffect } from 'react'
+import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Sphere } from '@react-three/drei'
-import type { Group, Mesh } from 'three'
+import type { Group } from 'three'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { useGameStore } from '../stores'
@@ -15,14 +15,30 @@ const REST_POSITION = {
 }
 
 /**
- * Configuration de l'animation vers la souris
+ * Zone de suivi des gants pendant le drag (limites pour rester visible)
+ */
+const FOLLOW_ZONE = {
+  left: { minX: -1.5, maxX: 0.2, minY: -1.2, maxY: 0.5, z: 2.0 },
+  right: { minX: -0.2, maxX: 1.5, minY: -1.2, maxY: 0.5, z: 2.0 },
+}
+
+/**
+ * Configuration de l'animation de coup (au relâchement)
  */
 const PUNCH_CONFIG = {
-  speed: 0.15,        // Durée de l'aller (secondes)
-  returnSpeed: 0.25,  // Durée du retour (secondes)
-  targetZ: 0.5,       // Profondeur cible (vers la caméra de l'adversaire)
-  easeIn: 'power3.out',
-  easeOut: 'power2.inOut',
+  speed: 0.12,        // Durée de l'aller (secondes) - rapide mais visible
+  returnSpeed: 0.25,  // Durée du retour (secondes) - plus lent pour le style
+  targetZ: 0.5,       // Profondeur cible (vers l'adversaire)
+  easeIn: 'power4.out',   // Accélération rapide puis décélération
+  easeOut: 'power2.inOut', // Retour fluide
+}
+
+/**
+ * Configuration du suivi pendant le drag
+ */
+const FOLLOW_CONFIG = {
+  smoothing: 0.15,    // Facteur de lissage (0 = instantané, 1 = très lent)
+  readyZ: 1.8,        // Z quand prêt à frapper (plus proche de l'écran)
 }
 
 /**
@@ -31,7 +47,9 @@ const PUNCH_CONFIG = {
 export interface GlovesHandle {
   leftGlove: Group | null
   rightGlove: Group | null
-  punchAt: (screenX: number, screenY: number) => void
+  startFollowing: (screenX: number, screenY: number) => void
+  updateFollowing: (screenX: number, screenY: number) => void
+  punchAndRelease: (screenX: number, screenY: number) => void
 }
 
 /**
@@ -66,7 +84,8 @@ function BoxingGlove({ color = '#cc0000' }: { color?: string }) {
 /**
  * Composant représentant les gants du joueur
  * Visibles en bas de l'écran en vue FPV
- * Les gants suivent les clics souris pour frapper
+ * - Pendant le clic/pression : les gants suivent le pointeur
+ * - Au relâchement : animation de coup rapide
  */
 export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
   const leftGloveRef = useRef<Group>(null)
@@ -74,61 +93,93 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
   const gameState = useGameStore((state) => state.gameState)
   const { camera, size } = useThree()
 
-  // Alterner les mains
+  // État de suivi
+  const activeHand = useRef<'left' | 'right' | null>(null)
   const lastHand = useRef<'left' | 'right'>('right')
   const isAnimating = useRef(false)
+  const isFollowing = useRef(false)
+  const targetFollowPos = useRef<THREE.Vector3>(new THREE.Vector3())
 
   /**
    * Convertit les coordonnées écran en coordonnées 3D world
    */
   const screenToWorld = (screenX: number, screenY: number, targetZ: number): THREE.Vector3 => {
-    // Normaliser les coordonnées écran (-1 à 1)
     const ndcX = (screenX / size.width) * 2 - 1
     const ndcY = -(screenY / size.height) * 2 + 1
-
-    // Créer un vecteur dans l'espace NDC
     const vector = new THREE.Vector3(ndcX, ndcY, 0.5)
-
-    // Convertir en coordonnées world
     vector.unproject(camera)
-
-    // Direction depuis la caméra
     const dir = vector.sub(camera.position).normalize()
-
-    // Distance pour atteindre le Z cible
     const distance = (targetZ - camera.position.z) / dir.z
-
-    // Position finale
     return camera.position.clone().add(dir.multiplyScalar(distance))
   }
 
   /**
-   * Anime un gant vers une position cible
+   * Limite une position dans la zone autorisée pour un gant
    */
-  const punchAt = (screenX: number, screenY: number) => {
+  const clampToZone = (pos: THREE.Vector3, hand: 'left' | 'right'): THREE.Vector3 => {
+    const zone = FOLLOW_ZONE[hand]
+    return new THREE.Vector3(
+      Math.max(zone.minX, Math.min(zone.maxX, pos.x)),
+      Math.max(zone.minY, Math.min(zone.maxY, pos.y)),
+      zone.z
+    )
+  }
+
+  /**
+   * Démarre le suivi du pointeur (appelé au pointerdown)
+   */
+  const startFollowing = (screenX: number, screenY: number) => {
     if (isAnimating.current || gameState !== 'FIGHTING') return
 
-    // Alterner les mains
+    // Choisir la main (alterner)
     const hand = lastHand.current === 'left' ? 'right' : 'left'
+    activeHand.current = hand
+    isFollowing.current = true
+
+    // Calculer la position cible initiale
+    const worldPos = screenToWorld(screenX, screenY, FOLLOW_CONFIG.readyZ)
+    targetFollowPos.current = clampToZone(worldPos, hand)
+  }
+
+  /**
+   * Met à jour la position cible pendant le drag
+   */
+  const updateFollowing = (screenX: number, screenY: number) => {
+    if (!isFollowing.current || !activeHand.current || gameState !== 'FIGHTING') return
+
+    const worldPos = screenToWorld(screenX, screenY, FOLLOW_CONFIG.readyZ)
+    targetFollowPos.current = clampToZone(worldPos, activeHand.current)
+  }
+
+  /**
+   * Déclenche le coup au relâchement et retourne à la position de repos
+   */
+  const punchAndRelease = (screenX: number, screenY: number) => {
+    if (gameState !== 'FIGHTING') return
+
+    const hand = activeHand.current || (lastHand.current === 'left' ? 'right' : 'left')
     lastHand.current = hand
 
     const glove = hand === 'left' ? leftGloveRef.current : rightGloveRef.current
     if (!glove) return
 
+    // Arrêter le suivi
+    isFollowing.current = false
+    activeHand.current = null
     isAnimating.current = true
 
-    // Calculer la position cible en 3D
+    // Position cible du coup
     const targetPos = screenToWorld(screenX, screenY, PUNCH_CONFIG.targetZ)
     const restPos = REST_POSITION[hand]
 
-    // Timeline GSAP pour l'animation
+    // Animation GSAP : coup rapide puis retour
     const tl = gsap.timeline({
       onComplete: () => {
         isAnimating.current = false
       },
     })
 
-    // Phase 1: Coup vers la cible
+    // Phase 1: Coup vers la cible (RAPIDE)
     tl.to(glove.position, {
       x: targetPos.x,
       y: targetPos.y,
@@ -141,8 +192,8 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
     tl.to(
       glove.rotation,
       {
-        x: -0.3,
-        z: hand === 'left' ? 0.2 : -0.2,
+        x: -0.5,
+        z: hand === 'left' ? 0.3 : -0.3,
         duration: PUNCH_CONFIG.speed,
         ease: PUNCH_CONFIG.easeIn,
       },
@@ -172,7 +223,7 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
     )
   }
 
-  // Exposer les refs et la fonction punchAt via useImperativeHandle
+  // Exposer les fonctions via useImperativeHandle
   useImperativeHandle(
     ref,
     () => ({
@@ -182,25 +233,49 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
       get rightGlove() {
         return rightGloveRef.current
       },
-      punchAt,
+      startFollowing,
+      updateFollowing,
+      punchAndRelease,
     }),
     [gameState, camera, size]
   )
 
-  // Animation idle légère des gants
+  // Animation frame : suivi fluide + idle
   useFrame((state) => {
-    if (gameState !== 'FIGHTING' || isAnimating.current) return
+    if (gameState !== 'FIGHTING') return
 
     const t = state.clock.elapsedTime
 
-    // Mouvement idle subtil (respiration du boxeur)
-    if (leftGloveRef.current) {
-      leftGloveRef.current.position.y = REST_POSITION.left.y + Math.sin(t * 2) * 0.03
-      leftGloveRef.current.position.x = REST_POSITION.left.x + Math.sin(t * 1.5) * 0.02
+    // Si en mode suivi, déplacer le gant actif vers la cible
+    if (isFollowing.current && activeHand.current && !isAnimating.current) {
+      const glove = activeHand.current === 'left' ? leftGloveRef.current : rightGloveRef.current
+      if (glove) {
+        // Interpolation fluide vers la position cible
+        glove.position.x += (targetFollowPos.current.x - glove.position.x) * (1 - FOLLOW_CONFIG.smoothing)
+        glove.position.y += (targetFollowPos.current.y - glove.position.y) * (1 - FOLLOW_CONFIG.smoothing)
+        glove.position.z += (targetFollowPos.current.z - glove.position.z) * (1 - FOLLOW_CONFIG.smoothing)
+
+        // Légère rotation pour indiquer "prêt à frapper"
+        glove.rotation.x = -0.2
+      }
     }
-    if (rightGloveRef.current) {
-      rightGloveRef.current.position.y = REST_POSITION.right.y + Math.sin(t * 2 + 0.5) * 0.03
-      rightGloveRef.current.position.x = REST_POSITION.right.x + Math.sin(t * 1.5 + 0.5) * 0.02
+
+    // Animation idle pour les gants non actifs
+    if (!isAnimating.current) {
+      if (leftGloveRef.current && activeHand.current !== 'left') {
+        leftGloveRef.current.position.y = REST_POSITION.left.y + Math.sin(t * 2) * 0.03
+        leftGloveRef.current.position.x = REST_POSITION.left.x + Math.sin(t * 1.5) * 0.02
+        if (!isFollowing.current) {
+          leftGloveRef.current.position.z = REST_POSITION.left.z
+        }
+      }
+      if (rightGloveRef.current && activeHand.current !== 'right') {
+        rightGloveRef.current.position.y = REST_POSITION.right.y + Math.sin(t * 2 + 0.5) * 0.03
+        rightGloveRef.current.position.x = REST_POSITION.right.x + Math.sin(t * 1.5 + 0.5) * 0.02
+        if (!isFollowing.current) {
+          rightGloveRef.current.position.z = REST_POSITION.right.z
+        }
+      }
     }
   })
 

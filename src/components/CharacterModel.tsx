@@ -125,14 +125,15 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
   const textureSettings = useTextureSettingsStore()
 
   // État spring-mass pour chaque partie
+  // Proportions inversées : grosse tête, petit corps, minuscules jambes
   const springStates = useRef<{
     head: SpringState
     body: SpringState
     base: SpringState
   }>({
-    head: createSpringState(1.6),
-    body: createSpringState(0.4),
-    base: createSpringState(-0.9),
+    head: createSpringState(1.55),  // Grosse tête en haut
+    body: createSpringState(0.3),   // Corps moyen
+    base: createSpringState(-0.6),  // Petite base (jambes)
   })
 
   // Dernier impact traité
@@ -304,11 +305,11 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
 
   return (
     <group ref={groupRef} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}>
-      {/* Tête (petite sphère en haut) - reçoit la texture/photo */}
+      {/* Tête (GROSSE sphère en haut) - reçoit la texture/photo - effet comique */}
       <Sphere
         ref={headRef}
-        args={[0.5, 32, 32]}
-        position={[0, 1.6, 0]}
+        args={[0.85, 32, 32]}
+        position={[0, 1.55, 0]}
         onPointerDown={(e) => handlePointerDown(e as unknown as THREE.Event & { point: THREE.Vector3 }, 'head')}
       >
         {hasTexture ? (
@@ -326,11 +327,11 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
         )}
       </Sphere>
 
-      {/* Corps (sphère moyenne) */}
+      {/* Corps (sphère moyenne - légèrement réduite) */}
       <Sphere
         ref={bodyRef}
-        args={[0.7, 32, 32]}
-        position={[0, 0.4, 0]}
+        args={[0.55, 32, 32]}
+        position={[0, 0.3, 0]}
         onPointerDown={(e) => handlePointerDown(e as unknown as THREE.Event & { point: THREE.Vector3 }, 'body')}
       >
         <DeformableFaceMaterial
@@ -344,11 +345,11 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
         />
       </Sphere>
 
-      {/* Base (grande sphère en bas) */}
+      {/* Base (PETITE sphère en bas - jambes minuscules pour effet comique) */}
       <Sphere
         ref={baseRef}
-        args={[0.9, 32, 32]}
-        position={[0, -0.9, 0]}
+        args={[0.35, 32, 32]}
+        position={[0, -0.6, 0]}
         onPointerDown={(e) => handlePointerDown(e as unknown as THREE.Event & { point: THREE.Vector3 }, 'base')}
       >
         <DeformableFaceMaterial

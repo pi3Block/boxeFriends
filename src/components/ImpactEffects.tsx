@@ -47,7 +47,7 @@ export function ImpactEffects() {
   const lastImpactId = useRef<number>(-1)
   const particles = useRef<Particle[]>([])
   const hitStopTime = useRef<number>(0)
-  const { clock } = useThree()
+  useThree() // Pour accéder au contexte Three.js
 
   // Références pour le mesh de particules
   const particlesRef = useRef<THREE.Points>(null)

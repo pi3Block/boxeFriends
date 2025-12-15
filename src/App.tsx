@@ -1,11 +1,11 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { PerspectiveCamera, Environment } from '@react-three/drei'
 import Scene from './components/Scene'
 import { UI } from './components/UI'
 import { JellyControls } from './components/JellyControls'
 import { ImpactOverlay } from './components/ImpactOverlay'
-import { usePunchDrag, type PunchData } from './hooks'
+import { usePunchDrag, type PunchData, type PunchDragCallbacks } from './hooks'
 import { useGameStore, useImpactStore } from './stores'
 import { AnimationProvider, useAnimationContext } from './context'
 
@@ -16,15 +16,43 @@ function AppContent() {
   const gameState = useGameStore((state) => state.gameState)
   const takeDamage = useGameStore((state) => state.takeDamage)
   const addImpact = useImpactStore((state) => state.addImpact)
-  const { triggerPunch, triggerPunchAt } = useAnimationContext()
+  const {
+    triggerPunch,
+    startGloveFollow,
+    updateGloveFollow,
+    triggerPunchRelease,
+    triggerCameraShake
+  } = useAnimationContext()
 
   // Alterner les mains
   const lastHand = useRef<'left' | 'right'>('right')
 
   /**
-   * Gère les coups détectés par les gestes
+   * Appelé quand le doigt/clic commence - le gant commence à suivre
    */
-  const handlePunch = useCallback(
+  const handleDragStart = useCallback(
+    (screenX: number, screenY: number) => {
+      if (gameState !== 'FIGHTING') return
+      startGloveFollow(screenX, screenY)
+    },
+    [gameState, startGloveFollow]
+  )
+
+  /**
+   * Appelé pendant le mouvement - le gant suit
+   */
+  const handleDragMove = useCallback(
+    (screenX: number, screenY: number) => {
+      if (gameState !== 'FIGHTING') return
+      updateGloveFollow(screenX, screenY)
+    },
+    [gameState, updateGloveFollow]
+  )
+
+  /**
+   * Appelé au relâchement - déclenche le coup et les effets
+   */
+  const handleDragEnd = useCallback(
     (data: PunchData) => {
       if (gameState !== 'FIGHTING') return
 
@@ -52,10 +80,13 @@ function AppContent() {
       const damage = 15 * mult * velocity
       takeDamage(damage, isCritical)
 
-      // Déclencher l'animation du gant vers la position cliquée
-      triggerPunchAt(screenPosition[0], screenPosition[1])
+      // Déclencher l'animation du coup (au relâchement)
+      triggerPunchRelease(screenPosition[0], screenPosition[1])
 
-      // Déclencher l'animation legacy
+      // Camera shake
+      triggerCameraShake(velocity * mult)
+
+      // Déclencher l'animation legacy pour les effets visuels
       triggerPunch(type, hand, velocity, isCritical)
 
       // Debug
@@ -65,11 +96,18 @@ function AppContent() {
         )
       }
     },
-    [gameState, addImpact, takeDamage, triggerPunch, triggerPunchAt]
+    [gameState, addImpact, takeDamage, triggerPunch, triggerPunchRelease, triggerCameraShake]
   )
 
+  // Callbacks pour le système de gestes
+  const gestureCallbacks = useMemo<PunchDragCallbacks>(() => ({
+    onDragStart: handleDragStart,
+    onDragMove: handleDragMove,
+    onDragEnd: handleDragEnd,
+  }), [handleDragStart, handleDragMove, handleDragEnd])
+
   // Bind des gestes sur le container
-  const bind = usePunchDrag(handlePunch, gameState === 'FIGHTING')
+  const bind = usePunchDrag(gestureCallbacks, gameState === 'FIGHTING')
 
   return (
     <div className="relative h-screen w-screen touch-none">
@@ -101,8 +139,8 @@ function AppContent() {
       {/* Effets d'impact (HTML overlay) */}
       <ImpactOverlay />
 
-      {/* Contrôles GUI pour les paramètres jelly (dev only) */}
-      {import.meta.env.DEV && <JellyControls />}
+      {/* Contrôles GUI pour les paramètres jelly */}
+      <JellyControls />
     </div>
   )
 }

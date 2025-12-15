@@ -44,7 +44,7 @@ function Scene() {
   log('Scene.tsx:21', 'After useThree in Scene', { hasCamera: !!camera }, 'H2')
   // #endregion
 
-  const { registerGloves, registerCamera, registerGlovesPunchAt } = useAnimationContext()
+  const { registerGloves, registerCamera, registerGlovesFunctions } = useAnimationContext()
 
   // #region agent log
   log('Scene.tsx:25', 'Before rendering Opponent', {}, 'H2')
@@ -60,16 +60,20 @@ function Scene() {
     const interval = setInterval(() => {
       if (glovesRef.current?.leftGlove && glovesRef.current?.rightGlove) {
         registerGloves(glovesRef.current.leftGlove, glovesRef.current.rightGlove)
-        // Enregistrer aussi la fonction punchAt
-        if (glovesRef.current.punchAt) {
-          registerGlovesPunchAt(glovesRef.current.punchAt)
+        // Enregistrer les fonctions de suivi et coup
+        if (glovesRef.current.startFollowing && glovesRef.current.updateFollowing && glovesRef.current.punchAndRelease) {
+          registerGlovesFunctions({
+            startFollowing: glovesRef.current.startFollowing,
+            updateFollowing: glovesRef.current.updateFollowing,
+            punchAndRelease: glovesRef.current.punchAndRelease,
+          })
         }
         clearInterval(interval)
       }
     }, 100)
 
     return () => clearInterval(interval)
-  }, [registerGloves, registerGlovesPunchAt])
+  }, [registerGloves, registerGlovesFunctions])
 
   return (
     <group>
