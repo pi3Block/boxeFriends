@@ -39,6 +39,13 @@ const DEFAULT_CHARACTERS: CharacterConfig[] = [
     modelPath: '', // Vide = utiliser la sphère par défaut
     scale: 1,
   },
+  {
+    id: 'facecap',
+    name: 'Visage ARKit',
+    modelPath: '/meshes/facecap.glb',
+    scale: 2.5,
+    headBone: 'head',
+  },
   // Les modèles GLB seront ajoutés dynamiquement
 ]
 

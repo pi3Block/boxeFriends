@@ -20,12 +20,12 @@ interface TextureSettingsStore extends TextureSettings {
 }
 
 /**
- * Valeurs par défaut
+ * Valeurs par défaut pour l'image par défaut de l'opposant
  */
 export const DEFAULT_TEXTURE_SETTINGS: TextureSettings = {
-  zoom: 1.5,      // Légèrement zoomé par défaut pour visage
-  offsetX: 0,
-  offsetY: 0,
+  zoom: 1.1,      // Zoom pour l'image par défaut
+  offsetX: 0.30,  // Décalage horizontal pour l'image par défaut
+  offsetY: 0.05,  // Décalage vertical pour l'image par défaut
 }
 
 export const useTextureSettingsStore = create<TextureSettingsStore>((set) => ({

@@ -13,7 +13,7 @@ export type PunchType = 'jab' | 'hook' | 'uppercut'
 /**
  * Texture par défaut de l'adversaire
  */
-export const DEFAULT_OPPONENT_TEXTURE = '/textures/default-face.jpeg'
+export const DEFAULT_OPPONENT_TEXTURE = '/textures/default-face.png'
 
 /**
  * Interface du store principal du jeu

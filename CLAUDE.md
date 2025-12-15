@@ -79,3 +79,34 @@ interface GameStore {
   opponentTexture: string | null;  // Blob URL of uploaded photo
 }
 ```
+
+## Facial Animation System (ARKit Morph Targets)
+
+### Model: facecap.glb
+Located at `public/meshes/facecap.glb` - requires special loaders:
+```typescript
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
+
+// Configure loader
+ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/gh/pmndrs/drei-assets/basis/')
+loader.setKTX2Loader(ktx2Loader)
+loader.setMeshoptDecoder(MeshoptDecoder)
+```
+
+### 52 ARKit Blend Shapes
+Defined in `useFacialStore.ts` - includes: browInnerUp, eyeBlink_L/R, jawOpen, mouthSmile_L/R, noseSneer_L/R, cheekPuff, etc.
+
+### Facial Store (useFacialStore)
+- **Presets**: idle, guard, lightHit, mediumHit, heavyHit, critical, jawHit, leftCheekHit, rightCheekHit, noseHit, foreheadHit, uppercutHit, stunned, knockout, hurt, taunt, angry, recovery
+- **triggerHitReaction(intensity, hitZone?)**: Auto-selects preset based on hit zone and intensity
+- **Hit zones**: 'jaw' | 'leftCheek' | 'rightCheek' | 'nose' | 'forehead' | 'uppercut'
+
+### Expression Design Tips
+For expressive reactions, use many blend shapes together with high values (0.8-1.0). Example for cheek hit:
+- mouthRight/Left: 0.96 (very high for asymmetric mouth)
+- eyeWide_L/R: 0.88
+- browInnerUp: 0.9
+- jawRight/Left: 0.38
+- Multiple mouth shapes: mouthPucker, mouthFunnel, mouthRollLower, mouthShrugUpper

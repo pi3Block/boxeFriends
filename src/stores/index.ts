@@ -12,3 +12,9 @@ export type { JellyParams } from './useJellyStore'
 
 export { useTextureSettingsStore, DEFAULT_TEXTURE_SETTINGS } from './useTextureSettingsStore'
 export type { TextureSettings } from './useTextureSettingsStore'
+
+export { useFacialStore, ARKIT_BLEND_SHAPES, FACIAL_PRESETS } from './useFacialStore'
+export type { BlendShapeName, FacialState, FacialPresetName } from './useFacialStore'
+
+export { useHandTrackingStore } from './useHandTrackingStore'
+export type { HandState, CameraPermission } from './useHandTrackingStore'

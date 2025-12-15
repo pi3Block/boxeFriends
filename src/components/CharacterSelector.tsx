@@ -13,20 +13,19 @@ const AVAILABLE_MODELS: CharacterConfig[] = [
     scale: 1,
   },
   {
+    id: 'facecap',
+    name: 'Visage ARKit',
+    modelPath: '/meshes/facecap.glb',
+    scale: 2.5,
+    headBone: 'head',
+  },
+  {
     id: 'humanoid',
     name: 'Humanoïde',
     modelPath: '/meshes/Humanoid.glb',
     scale: 1.5,
     headBone: 'head',
   },
-  // Ajouter d'autres modèles ici :
-  // {
-  //   id: 'autre-modele',
-  //   name: 'Autre Modèle',
-  //   modelPath: '/meshes/AutreModele.glb',
-  //   scale: 1,
-  //   headBone: 'Head',
-  // },
 ]
 
 /**
@@ -106,6 +105,18 @@ function CharacterIcon({ type }: { type: string }) {
     return (
       <svg className="h-10 w-10 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
         <circle cx="12" cy="12" r="10" />
+      </svg>
+    )
+  }
+
+  if (type === 'facecap') {
+    // Icône visage avec expressions
+    return (
+      <svg className="h-10 w-10 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+        <ellipse cx="12" cy="12" rx="9" ry="11" />
+        <circle cx="8" cy="10" r="1.5" fill="#1f2937" />
+        <circle cx="16" cy="10" r="1.5" fill="#1f2937" />
+        <path d="M8 15c2 2 6 2 8 0" stroke="#1f2937" strokeWidth="1.5" fill="none" strokeLinecap="round" />
       </svg>
     )
   }

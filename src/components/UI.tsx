@@ -1,6 +1,8 @@
-import { useCallback, useRef, type ChangeEvent } from 'react'
-import { useGameStore } from '../stores'
+import { useCallback, useRef, useState, type ChangeEvent } from 'react'
+import { useGameStore, useHandTrackingStore } from '../stores'
 import { CharacterSelector } from './CharacterSelector'
+import { FaceCropper } from './FaceCropper'
+import { alignFace } from '../utils/FaceAligner'
 
 /**
  * Composant UI overlay (HTML au-dessus du Canvas)
@@ -16,10 +18,23 @@ export function UI() {
   const startFight = useGameStore((state) => state.startFight)
   const resetGame = useGameStore((state) => state.resetGame)
 
+  // Hand tracking store
+  const isCameraEnabled = useHandTrackingStore((state) => state.isCameraEnabled)
+  const isTracking = useHandTrackingStore((state) => state.isTracking)
+  const isCalibrated = useHandTrackingStore((state) => state.isCalibrated)
+  const setCameraEnabled = useHandTrackingStore((state) => state.setCameraEnabled)
+  const resetCalibration = useHandTrackingStore((state) => state.resetCalibration)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingStatus, setProcessingStatus] = useState('')
+
+  // État pour le cropper
+  const [showCropper, setShowCropper] = useState(false)
+  const [rawImageUrl, setRawImageUrl] = useState<string | null>(null)
 
   /**
-   * Gère l'upload de photo
+   * Gère l'upload de photo - ouvre le cropper
    */
   const handleFileChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -32,12 +47,74 @@ export function UI() {
         return
       }
 
-      // Créer un blob URL
+      // Créer URL et ouvrir le cropper
       const url = URL.createObjectURL(file)
-      setTexture(url)
+      setRawImageUrl(url)
+      setShowCropper(true)
     },
-    [setTexture]
+    []
   )
+
+  /**
+   * Callback quand l'utilisateur confirme le crop
+   */
+  const handleCropConfirm = useCallback(
+    async (croppedImageUrl: string) => {
+      setShowCropper(false)
+
+      // Nettoyer l'ancienne URL
+      if (rawImageUrl) {
+        URL.revokeObjectURL(rawImageUrl)
+        setRawImageUrl(null)
+      }
+
+      setIsProcessing(true)
+      setProcessingStatus('Alignement du visage...')
+
+      try {
+        // Aligner le visage avec MediaPipe sur l'image croppée
+        const result = await alignFace(croppedImageUrl, {
+          outputSize: 512,
+          eyeLineY: 0.38,
+          faceWidthRatio: 0.65,
+        })
+
+        if (result.success && result.alignedImageUrl) {
+          setProcessingStatus('Visage aligné!')
+          // Nettoyer l'URL croppée
+          URL.revokeObjectURL(croppedImageUrl)
+          setTexture(result.alignedImageUrl)
+          console.log('[UI] Face alignment successful')
+        } else {
+          // Utiliser l'image croppée directement si MediaPipe échoue
+          console.warn('[UI] MediaPipe alignment failed, using cropped image:', result.error)
+          setProcessingStatus('Utilisation de l\'image recadrée')
+          setTexture(croppedImageUrl)
+        }
+      } catch (error) {
+        console.error('[UI] Error during face alignment:', error)
+        // Utiliser l'image croppée directement
+        setTexture(croppedImageUrl)
+      } finally {
+        setTimeout(() => {
+          setIsProcessing(false)
+          setProcessingStatus('')
+        }, 1000)
+      }
+    },
+    [rawImageUrl, setTexture]
+  )
+
+  /**
+   * Callback quand l'utilisateur annule le crop
+   */
+  const handleCropCancel = useCallback(() => {
+    setShowCropper(false)
+    if (rawImageUrl) {
+      URL.revokeObjectURL(rawImageUrl)
+      setRawImageUrl(null)
+    }
+  }, [rawImageUrl])
 
   /**
    * Déclenche l'input file
@@ -77,10 +154,50 @@ export function UI() {
           {/* Bouton upload */}
           <button
             onClick={handleUploadClick}
-            className="rounded-lg bg-blue-600 px-6 py-3 font-bold text-white transition hover:bg-blue-700"
+            disabled={isProcessing}
+            className={`rounded-lg px-6 py-3 font-bold text-white transition ${
+              isProcessing
+                ? 'cursor-wait bg-gray-500'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
-            {isCustomTexture ? 'Changer la photo' : 'Choisir une photo (visage)'}
+            {isProcessing
+              ? processingStatus || 'Traitement...'
+              : isCustomTexture
+                ? 'Changer la photo'
+                : 'Choisir une photo (visage)'}
           </button>
+
+          {/* Info sur le processus */}
+          <p className="text-xs text-gray-300">
+            Recadrez le visage, puis alignement automatique
+          </p>
+
+          {/* Toggle caméra pour hand tracking */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCameraEnabled(!isCameraEnabled)}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 font-bold transition ${
+                isCameraEnabled
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+              }`}
+            >
+              {/* Icône caméra */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+              </svg>
+              {isCameraEnabled ? 'Caméra ON' : 'Caméra OFF'}
+            </button>
+            <span className="text-xs text-gray-400">
+              Contrôle par gestes
+            </span>
+          </div>
 
           {/* Bouton start */}
           <button
@@ -95,6 +212,32 @@ export function UI() {
       {/* FIGHTING - HUD */}
       {gameState === 'FIGHTING' && (
         <>
+          {/* Indicateur de tracking caméra + recalibrer (coin supérieur droit) */}
+          {isCameraEnabled && (
+            <div className="absolute right-4 top-4 flex items-center gap-2">
+              {/* Bouton recalibrer */}
+              {isCalibrated && (
+                <button
+                  onClick={resetCalibration}
+                  className="rounded-full bg-black/50 px-3 py-1 text-xs text-white transition hover:bg-black/70"
+                >
+                  Recalibrer
+                </button>
+              )}
+              {/* Statut tracking */}
+              <div className="flex items-center gap-2 rounded-full bg-black/50 px-3 py-1">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    isTracking ? 'animate-pulse bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                <span className="text-xs text-white">
+                  {isTracking ? 'Tracking' : 'No hands'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Barre de vie adversaire (top) */}
           <div className="p-4">
             <div className="mx-auto w-full max-w-md">
@@ -161,6 +304,15 @@ export function UI() {
             REJOUER
           </button>
         </div>
+      )}
+
+      {/* Modal de crop */}
+      {showCropper && rawImageUrl && (
+        <FaceCropper
+          imageUrl={rawImageUrl}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
       )}
     </div>
   )

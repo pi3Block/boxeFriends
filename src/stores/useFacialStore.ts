@@ -71,86 +71,157 @@ export const FACIAL_PRESETS: Record<string, FacialState> = {
     mouthFrown_R: 0.4,
   },
 
-  // Coup fort - douleur intense
+  // Coup fort - douleur intense, expression dramatique
   heavyHit: {
-    jawOpen: 0.8,
-    eyeWide_L: 0.9,
-    eyeWide_R: 0.9,
-    browInnerUp: 0.9,
-    mouthFunnel: 0.4,
-    cheekPuff: 0.5,
-    noseSneer_L: 0.7,
-    noseSneer_R: 0.7,
+    jawOpen: 0.85,
+    eyeWide_L: 0.95,
+    eyeWide_R: 0.95,
+    browInnerUp: 0.95,
+    browOuterUp_L: 0.6,
+    browOuterUp_R: 0.6,
+    mouthFunnel: 0.5,
+    mouthStretch_L: 0.6,
+    mouthStretch_R: 0.6,
+    cheekPuff: 0.4,
+    noseSneer_L: 0.8,
+    noseSneer_R: 0.8,
+    mouthShrugUpper: 0.4,
   },
 
-  // Coup critique - choc
+  // Coup critique - choc maximal, expression de stupeur
   critical: {
     jawOpen: 1,
     eyeWide_L: 1,
     eyeWide_R: 1,
     browInnerUp: 1,
-    mouthStretch_L: 0.6,
-    mouthStretch_R: 0.6,
-    cheekPuff: 0.7,
-  },
-
-  // Coup à la mâchoire
-  jawHit: {
-    jawOpen: 0.7,
-    jawLeft: 0.4,
-    mouthLeft: 0.3,
-    eyeSquint_L: 0.6,
-    eyeSquint_R: 0.3,
-    cheekSquint_L: 0.4,
-  },
-
-  // Coup à la joue gauche
-  leftCheekHit: {
+    browOuterUp_L: 0.8,
+    browOuterUp_R: 0.8,
+    mouthStretch_L: 0.8,
+    mouthStretch_R: 0.8,
     cheekPuff: 0.6,
-    cheekSquint_L: 0.5,
-    eyeSquint_L: 0.7,
-    eyeBlink_L: 0.4,
-    mouthRight: 0.3,
-    jawRight: 0.2,
-  },
-
-  // Coup à la joue droite
-  rightCheekHit: {
-    cheekPuff: 0.6,
-    cheekSquint_R: 0.5,
-    eyeSquint_R: 0.7,
-    eyeBlink_R: 0.4,
-    mouthLeft: 0.3,
-    jawLeft: 0.2,
-  },
-
-  // Coup au nez
-  noseHit: {
-    noseSneer_L: 0.8,
-    noseSneer_R: 0.8,
-    eyeBlink_L: 0.5,
-    eyeBlink_R: 0.5,
-    browInnerUp: 0.7,
+    noseSneer_L: 0.6,
+    noseSneer_R: 0.6,
+    mouthShrugUpper: 0.7,
     mouthFunnel: 0.3,
   },
 
-  // Coup au front / sourcils
-  foreheadHit: {
-    browDown_L: 0.8,
-    browDown_R: 0.8,
-    eyeBlink_L: 0.7,
-    eyeBlink_R: 0.7,
-    jawOpen: 0.3,
+  // Coup à la mâchoire - douleur intense
+  jawHit: {
+    jawOpen: 0.9,
+    jawForward: 0.3,
+    browInnerUp: 0.95,
+    browDown_L: 0.3,
+    browDown_R: 0.3,
+    eyeWide_L: 0.7,
+    eyeWide_R: 0.7,
+    eyeSquint_L: 0.3,
+    eyeSquint_R: 0.3,
+    noseSneer_L: 0.5,
+    noseSneer_R: 0.5,
+    mouthStretch_L: 0.7,
+    mouthStretch_R: 0.7,
+    mouthFrown_L: 0.5,
+    mouthFrown_R: 0.5,
+    cheekPuff: 0.3,
   },
 
-  // Uppercut (coup par en dessous)
+  // Coup à la joue gauche - miroir de rightCheekHit
+  leftCheekHit: {
+    browInnerUp: 0.9,
+    browOuterUp_R: 0.8,
+    browOuterUp_L: 0.75,
+    eyeWide_L: 0.87,
+    eyeWide_R: 0.88,
+    eyeLookDown_L: 0.5,
+    eyeLookDown_R: 0.5,
+    eyeLookIn_L: 0.4,
+    eyeLookOut_R: 0.3,
+    cheekPuff: 0.2,
+    cheekSquint_L: 0.16,
+    jawOpen: 0.2,
+    jawLeft: 0.38,
+    mouthLeft: 0.96,
+    mouthPucker: 0.45,
+    mouthFunnel: 0.2,
+    mouthRollLower: 0.47,
+    mouthShrugUpper: 0.55,
+    mouthShrugLower: 0.29,
+    mouthClose: 0.27,
+  },
+
+  // Coup à la joue droite - très expressif basé sur l'exemple three.js
+  rightCheekHit: {
+    browInnerUp: 0.9,
+    browOuterUp_L: 0.8,
+    browOuterUp_R: 0.75,
+    eyeWide_L: 0.88,
+    eyeWide_R: 0.87,
+    eyeLookDown_L: 0.5,
+    eyeLookDown_R: 0.5,
+    eyeLookOut_L: 0.3,
+    eyeLookIn_R: 0.4,
+    cheekPuff: 0.2,
+    cheekSquint_R: 0.16,
+    jawOpen: 0.2,
+    jawRight: 0.38,
+    mouthRight: 0.96,
+    mouthPucker: 0.45,
+    mouthFunnel: 0.2,
+    mouthRollLower: 0.47,
+    mouthShrugUpper: 0.55,
+    mouthShrugLower: 0.29,
+    mouthClose: 0.27,
+  },
+
+  // Coup au nez - yeux qui se ferment, grimace
+  noseHit: {
+    noseSneer_L: 0.95,
+    noseSneer_R: 0.95,
+    eyeBlink_L: 0.8,
+    eyeBlink_R: 0.8,
+    eyeSquint_L: 0.9,
+    eyeSquint_R: 0.9,
+    browInnerUp: 0.85,
+    browDown_L: 0.5,
+    browDown_R: 0.5,
+    mouthFunnel: 0.4,
+    mouthPucker: 0.3,
+    jawOpen: 0.15,
+    cheekSquint_L: 0.6,
+    cheekSquint_R: 0.6,
+  },
+
+  // Coup au front / sourcils - choc
+  foreheadHit: {
+    browDown_L: 0.95,
+    browDown_R: 0.95,
+    eyeBlink_L: 0.85,
+    eyeBlink_R: 0.85,
+    eyeSquint_L: 0.7,
+    eyeSquint_R: 0.7,
+    jawOpen: 0.4,
+    mouthFrown_L: 0.6,
+    mouthFrown_R: 0.6,
+    noseSneer_L: 0.4,
+    noseSneer_R: 0.4,
+  },
+
+  // Uppercut (coup par en dessous) - tête en arrière, choc
   uppercutHit: {
-    jawOpen: 0.9,
-    eyeWide_L: 0.8,
-    eyeWide_R: 0.8,
-    browInnerUp: 0.8,
-    mouthUpperUp_L: 0.5,
-    mouthUpperUp_R: 0.5,
+    jawOpen: 1,
+    eyeWide_L: 0.95,
+    eyeWide_R: 0.95,
+    browInnerUp: 1,
+    browOuterUp_L: 0.7,
+    browOuterUp_R: 0.7,
+    eyeLookUp_L: 0.8,
+    eyeLookUp_R: 0.8,
+    mouthUpperUp_L: 0.7,
+    mouthUpperUp_R: 0.7,
+    mouthStretch_L: 0.5,
+    mouthStretch_R: 0.5,
+    noseSneer_L: 0.3,
+    noseSneer_R: 0.3,
   },
 
   // Étourdi / sonné
@@ -164,15 +235,21 @@ export const FACIAL_PRESETS: Record<string, FacialState> = {
     browInnerUp: 0.5,
   },
 
-  // K.O. - yeux fermés, bouche ouverte
+  // K.O. - yeux fermés, bouche ouverte, expression de défaite
   knockout: {
     eyeBlink_L: 1,
     eyeBlink_R: 1,
-    jawOpen: 0.6,
-    mouthRollLower: 0.4,
-    browInnerUp: 0.3,
-    mouthFrown_L: 0.5,
-    mouthFrown_R: 0.5,
+    jawOpen: 0.7,
+    mouthRollLower: 0.5,
+    mouthRollUpper: 0.2,
+    browInnerUp: 0.4,
+    browDown_L: 0.2,
+    browDown_R: 0.2,
+    mouthFrown_L: 0.7,
+    mouthFrown_R: 0.7,
+    mouthLowerDown_L: 0.3,
+    mouthLowerDown_R: 0.3,
+    cheekPuff: 0.1,
   },
 
   // Douleur persistante (HP bas)

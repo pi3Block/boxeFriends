@@ -48,9 +48,13 @@ const REST_POSITIONS = {
  * Interface pour les fonctions de gants exposées
  */
 interface GlovesFunctions {
+  // Méthodes tactile (alternance automatique)
   startFollowing: (screenX: number, screenY: number) => void
   updateFollowing: (screenX: number, screenY: number) => void
   punchAndRelease: (screenX: number, screenY: number) => void
+  // Méthodes caméra (contrôle indépendant)
+  updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  triggerPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
 }
 
 interface AnimationContextType {
@@ -58,10 +62,14 @@ interface AnimationContextType {
   registerCamera: (camera: Camera) => void
   registerGlovesFunctions: (funcs: GlovesFunctions) => void
   triggerPunch: (type: PunchType, hand: 'left' | 'right', velocity: number, isCritical: boolean) => void
-  // Nouvelles fonctions pour le système de suivi
+  // Fonctions tactile (alternance automatique)
   startGloveFollow: (screenX: number, screenY: number) => void
   updateGloveFollow: (screenX: number, screenY: number) => void
   triggerPunchRelease: (screenX: number, screenY: number) => void
+  // Fonctions caméra (contrôle indépendant)
+  updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  triggerHandPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  // Effets
   triggerCameraShake: (intensity: number) => void
 }
 
@@ -96,6 +104,16 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
   // Nouvelle fonction : déclencher le coup au relâchement
   const triggerPunchRelease = useCallback((screenX: number, screenY: number) => {
     glovesFuncsRef.current?.punchAndRelease(screenX, screenY)
+  }, [])
+
+  // Fonction caméra : mettre à jour la position d'une main spécifique
+  const updateHandPosition = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.updateHandPosition(hand, screenX, screenY)
+  }, [])
+
+  // Fonction caméra : déclencher un coup pour une main spécifique
+  const triggerHandPunch = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.triggerPunch(hand, screenX, screenY)
   }, [])
 
   const registerCamera = useCallback((camera: Camera) => {
@@ -221,9 +239,14 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
         registerCamera,
         registerGlovesFunctions,
         triggerPunch,
+        // Tactile
         startGloveFollow,
         updateGloveFollow,
         triggerPunchRelease,
+        // Caméra
+        updateHandPosition,
+        triggerHandPunch,
+        // Effets
         triggerCameraShake,
       }}
     >

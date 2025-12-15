@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useGameStore, useImpactStore, useJellyStore, useTextureSettingsStore, type JellyParams, type TextureSettings } from '../stores'
 import { useSelectedCharacter } from '../stores/useCharacterStore'
 import { DeformableFaceMaterial } from '../shaders'
+import { FaceOpponent } from './FaceOpponent'
 
 // #region agent log
 const LOG_ENDPOINT = 'http://127.0.0.1:7243/ingest/bb23579b-81a8-4ebb-a165-6e012391b778'
@@ -53,8 +54,20 @@ export function CharacterModel({ textureUrl }: CharacterModelProps) {
     return <SphereOpponent textureUrl={textureUrl} />
   }
 
+  // Utiliser FaceOpponent pour le modèle facecap (gestion spéciale des morph targets)
+  if (character.id === 'facecap') {
+    // #region agent log
+    log('CharacterModel.tsx:37', 'Returning FaceOpponent', {}, 'H3')
+    // #endregion
+    return (
+      <Suspense fallback={<SphereOpponent textureUrl={textureUrl} />}>
+        <FaceOpponent textureUrl={textureUrl} />
+      </Suspense>
+    )
+  }
+
   // #region agent log
-  log('CharacterModel.tsx:35', 'Returning GLBOpponent in Suspense', { modelPath: character.modelPath }, 'H3')
+  log('CharacterModel.tsx:45', 'Returning GLBOpponent in Suspense', { modelPath: character.modelPath }, 'H3')
   // #endregion
 
   return (

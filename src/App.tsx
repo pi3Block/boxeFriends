@@ -5,8 +5,10 @@ import Scene from './components/Scene'
 import { UI } from './components/UI'
 import { JellyControls } from './components/JellyControls'
 import { ImpactOverlay } from './components/ImpactOverlay'
-import { usePunchDrag, type PunchData, type PunchDragCallbacks } from './hooks'
-import { useGameStore, useImpactStore } from './stores'
+import { HandTrackingOverlay } from './components/HandTrackingOverlay'
+import { CalibrationOverlay } from './components/CalibrationOverlay'
+import { usePunchDrag, useUnifiedInput, type PunchData, type PunchDragCallbacks, type CameraInputCallbacks } from './hooks'
+import { useGameStore, useImpactStore, useHandTrackingStore } from './stores'
 import { AnimationProvider, useAnimationContext } from './context'
 
 /**
@@ -16,15 +18,18 @@ function AppContent() {
   const gameState = useGameStore((state) => state.gameState)
   const takeDamage = useGameStore((state) => state.takeDamage)
   const addImpact = useImpactStore((state) => state.addImpact)
+  const isCameraEnabled = useHandTrackingStore((state) => state.isCameraEnabled)
   const {
     triggerPunch,
     startGloveFollow,
     updateGloveFollow,
     triggerPunchRelease,
+    updateHandPosition,
+    triggerHandPunch,
     triggerCameraShake
   } = useAnimationContext()
 
-  // Alterner les mains
+  // Alterner les mains (mode tactile)
   const lastHand = useRef<'left' | 'right'>('right')
 
   /**
@@ -50,7 +55,7 @@ function AppContent() {
   )
 
   /**
-   * Appelé au relâchement - déclenche le coup et les effets
+   * Appelé au relâchement (tactile) - déclenche le coup et les effets
    */
   const handleDragEnd = useCallback(
     (data: PunchData) => {
@@ -99,15 +104,76 @@ function AppContent() {
     [gameState, addImpact, takeDamage, triggerPunch, triggerPunchRelease, triggerCameraShake]
   )
 
-  // Callbacks pour le système de gestes
+  /**
+   * Traite un coup détecté par la caméra pour une main spécifique
+   */
+  const handleCameraPunch = useCallback(
+    (hand: 'left' | 'right', data: PunchData) => {
+      if (gameState !== 'FIGHTING') return
+
+      const { type, velocity, screenPosition } = data
+
+      // Multiplicateurs de dégâts
+      const multipliers = { jab: 0.5, hook: 0.8, uppercut: 1.0 }
+      const mult = multipliers[type]
+
+      // Calculer le point d'impact
+      const x = ((screenPosition[0] / window.innerWidth) * 2 - 1) * 0.8
+      const y = (-(screenPosition[1] / window.innerHeight) * 2 + 1) * 0.8
+
+      // Déterminer si critique
+      const isCritical = velocity * mult > 0.85
+
+      // Ajouter l'impact visuel
+      addImpact([x, y, 0.5], velocity * mult)
+
+      // Appliquer les dégâts
+      const damage = 15 * mult * velocity
+      takeDamage(damage, isCritical)
+
+      // Déclencher l'animation du coup pour cette main spécifique
+      triggerHandPunch(hand, screenPosition[0], screenPosition[1])
+
+      // Camera shake
+      triggerCameraShake(velocity * mult)
+
+      // Déclencher l'animation legacy pour les effets visuels
+      triggerPunch(type, hand, velocity, isCritical)
+
+      // Debug
+      if (import.meta.env.DEV) {
+        console.log(
+          `[CAMERA PUNCH] ${type} (${hand}) | vel: ${velocity.toFixed(2)} | dmg: ${damage.toFixed(1)}${isCritical ? ' CRITICAL!' : ''}`
+        )
+      }
+    },
+    [gameState, addImpact, takeDamage, triggerPunch, triggerHandPunch, triggerCameraShake]
+  )
+
+  // Callbacks pour le système de gestes tactile
   const gestureCallbacks = useMemo<PunchDragCallbacks>(() => ({
     onDragStart: handleDragStart,
     onDragMove: handleDragMove,
     onDragEnd: handleDragEnd,
   }), [handleDragStart, handleDragMove, handleDragEnd])
 
-  // Bind des gestes sur le container
-  const bind = usePunchDrag(gestureCallbacks, gameState === 'FIGHTING')
+  // Callbacks pour le mode caméra
+  const cameraCallbacks = useMemo<CameraInputCallbacks>(() => ({
+    onLeftHandMove: (x, y) => updateHandPosition('left', x, y),
+    onRightHandMove: (x, y) => updateHandPosition('right', x, y),
+    onLeftPunch: (data) => handleCameraPunch('left', data),
+    onRightPunch: (data) => handleCameraPunch('right', data),
+  }), [updateHandPosition, handleCameraPunch])
+
+  // Hook d'input unifié (gère automatiquement le switch touch/caméra)
+  useUnifiedInput({
+    touchCallbacks: gestureCallbacks,
+    cameraCallbacks,
+    useCameraInput: isCameraEnabled,
+  })
+
+  // Bind des gestes tactile sur le container
+  const bind = usePunchDrag(gestureCallbacks, gameState === 'FIGHTING' && !isCameraEnabled)
 
   return (
     <div className="relative h-screen w-screen touch-none">
@@ -138,6 +204,12 @@ function AppContent() {
 
       {/* Effets d'impact (HTML overlay) */}
       <ImpactOverlay />
+
+      {/* Hand tracking overlay (video caché + debug optionnel) */}
+      <HandTrackingOverlay showDebug={import.meta.env.DEV} />
+
+      {/* Overlay de calibration (affiché si caméra active mais pas calibrée) */}
+      <CalibrationOverlay />
 
       {/* Contrôles GUI pour les paramètres jelly */}
       <JellyControls />
