@@ -11,7 +11,6 @@ export function UI() {
   const gameState = useGameStore((state) => state.gameState)
   const playerHp = useGameStore((state) => state.playerHp)
   const opponentHp = useGameStore((state) => state.opponentHp)
-  const comboCount = useGameStore((state) => state.comboCount)
   const opponentTexture = useGameStore((state) => state.opponentTexture)
   const isCustomTexture = useGameStore((state) => state.isCustomTexture)
   const setTexture = useGameStore((state) => state.setTexture)
@@ -252,15 +251,6 @@ export function UI() {
               </div>
             </div>
           </div>
-
-          {/* Combo counter (centre) */}
-          {comboCount > 1 && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <div className="animate-pulse text-6xl font-black text-yellow-400 drop-shadow-lg">
-                {comboCount}x COMBO!
-              </div>
-            </div>
-          )}
 
           {/* Spacer */}
           <div className="flex-1" />

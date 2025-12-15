@@ -8,6 +8,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import { useImpactStore, useFacialStore, ARKIT_BLEND_SHAPES, type BlendShapeName, useTextureSettingsStore } from '../stores'
 import { useGameStore } from '../stores'
+import { HairSystem } from './HairSystem'
 
 /**
  * Configuration du composant FaceOpponent
@@ -184,6 +185,10 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
   const morphDictRef = useRef<Record<string, number> | null>(null)
   const lastImpactId = useRef<number>(-1)
 
+  // Refs pour la vélocité de la tête (pour les cheveux)
+  const prevHeadPos = useRef(new THREE.Vector3())
+  const headVelocity = useRef(new THREE.Vector3())
+
   // Cloner la scène
   const clonedScene = useMemo(() => scene.clone(), [scene])
 
@@ -351,6 +356,11 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
     if (groupRef.current) {
       groupRef.current.position.z *= 0.95
       groupRef.current.rotation.x *= 0.95
+
+      // Calculer la vélocité de la tête pour les cheveux
+      headVelocity.current.subVectors(groupRef.current.position, prevHeadPos.current)
+      headVelocity.current.multiplyScalar(60) // Normaliser par fps approximatif
+      prevHeadPos.current.copy(groupRef.current.position)
     }
   })
 
@@ -361,6 +371,8 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
       scale={[FACE_CONFIG.scale, FACE_CONFIG.scale, FACE_CONFIG.scale]}
     >
       <primitive object={clonedScene} />
+      {/* Cheveux procéduraux - ajoutés de manière impérative */}
+      <HairSystem parentObject={clonedScene} />
     </group>
   )
 }

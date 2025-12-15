@@ -61,11 +61,16 @@ const DEPTH_VISUAL_CONFIG = {
 export interface GlovesHandle {
   leftGlove: Group | null
   rightGlove: Group | null
-  // Anciennes méthodes (rétrocompatibilité tactile - alternance automatique)
+  // Méthodes tactile (alternance automatique)
   startFollowing: (screenX: number, screenY: number) => void
   updateFollowing: (screenX: number, screenY: number) => void
   punchAndRelease: (screenX: number, screenY: number) => void
-  // Nouvelles méthodes pour contrôle indépendant (mode caméra)
+  quickPunch: () => void
+  returnToRest: () => void
+  // Méthode souris: les deux gants suivent
+  updateBothGloves: (screenX: number, screenY: number) => void
+  punchGlove: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  // Méthodes pour contrôle indépendant (mode caméra)
   updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   triggerPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
 }
@@ -164,6 +169,13 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
     targetPos: THREE.Vector3
   }>({ isActive: false, isAnimating: false, targetPos: new THREE.Vector3() })
 
+  // Timer pour le logging des positions
+  const lastLogTime = useRef(0)
+
+  // Flag pour le mode souris (désactive l'animation idle)
+  const isMouseModeActive = useRef(false)
+  const isPunchAnimating = useRef<{ left: boolean; right: boolean }>({ left: false, right: false })
+
   /**
    * Calcule les paramètres visuels basés sur la profondeur Z
    * Retourne : { scale, emissive } où emissive est l'intensité d'émission
@@ -211,18 +223,71 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
 
   /**
    * Démarre le suivi du pointeur (appelé au pointerdown)
+   * Note: Ne vérifie plus isAnimating pour permettre le suivi pendant le punch
    */
   const startFollowing = (screenX: number, screenY: number) => {
-    if (isAnimating.current || gameState !== 'FIGHTING') return
+    if (gameState !== 'FIGHTING') return
 
     // Choisir la main (alterner)
     const hand = lastHand.current === 'left' ? 'right' : 'left'
+    lastHand.current = hand
     activeHand.current = hand
     isFollowing.current = true
 
     // Calculer la position cible initiale
     const worldPos = screenToWorld(screenX, screenY, FOLLOW_CONFIG.readyZ)
     targetFollowPos.current = clampToZone(worldPos, hand)
+
+    // Déplacer immédiatement le gant vers la position cible
+    const glove = hand === 'left' ? leftGloveRef.current : rightGloveRef.current
+    if (glove) {
+      glove.position.x = targetFollowPos.current.x
+      glove.position.y = targetFollowPos.current.y
+      glove.position.z = FOLLOW_CONFIG.readyZ
+    }
+  }
+
+  /**
+   * Animation de coup rapide (Z seulement) sans bloquer le suivi X/Y
+   * Appelé immédiatement au clic pour l'effet visuel du punch
+   */
+  const quickPunch = () => {
+    if (gameState !== 'FIGHTING' || !activeHand.current) return
+
+    const hand = activeHand.current
+    const glove = hand === 'left' ? leftGloveRef.current : rightGloveRef.current
+    if (!glove) return
+
+    // Animation très rapide: avancer en Z puis revenir
+    const punchDuration = 0.1
+
+    gsap.to(glove.position, {
+      z: PUNCH_CONFIG.targetZ,
+      duration: punchDuration,
+      ease: 'power2.out',
+      onComplete: () => {
+        // Retour à la profondeur de suivi (pas de repos)
+        gsap.to(glove.position, {
+          z: FOLLOW_CONFIG.readyZ,
+          duration: punchDuration * 1.5,
+          ease: 'power2.inOut',
+        })
+      },
+    })
+
+    // Rotation de punch rapide
+    gsap.to(glove.rotation, {
+      x: -0.5,
+      duration: punchDuration,
+      ease: 'power2.out',
+      onComplete: () => {
+        gsap.to(glove.rotation, {
+          x: -0.2,
+          duration: punchDuration * 1.5,
+          ease: 'power2.inOut',
+        })
+      },
+    })
   }
 
   /**
@@ -308,6 +373,165 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
   }
 
   /**
+   * Retour à la position de repos sans déclencher de coup
+   * Appelé quand on relâche après avoir suivi la souris
+   */
+  const returnToRest = () => {
+    if (gameState !== 'FIGHTING') return
+
+    const hand = activeHand.current || lastHand.current
+    const glove = hand === 'left' ? leftGloveRef.current : rightGloveRef.current
+    if (!glove) return
+
+    // Arrêter le suivi
+    isFollowing.current = false
+    activeHand.current = null
+
+    // Animation de retour fluide à la position de repos
+    const restPos = REST_POSITION[hand]
+
+    gsap.to(glove.position, {
+      x: restPos.x,
+      y: restPos.y,
+      z: restPos.z,
+      duration: PUNCH_CONFIG.returnSpeed,
+      ease: PUNCH_CONFIG.easeOut,
+    })
+
+    gsap.to(glove.rotation, {
+      x: 0.3,
+      y: hand === 'left' ? 0.2 : -0.2,
+      z: 0,
+      duration: PUNCH_CONFIG.returnSpeed,
+      ease: PUNCH_CONFIG.easeOut,
+    })
+  }
+
+  /**
+   * Les deux gants en position de garde FPV avec influence subtile de la souris
+   * Les gants restent principalement à leur position de repos
+   * Note: Lit gameState directement du store pour éviter les problèmes de closure
+   */
+  const updateBothGloves = (screenX: number, screenY: number) => {
+    // Lire gameState frais du store (pas de la closure)
+    const currentGameState = useGameStore.getState().gameState
+    if (currentGameState !== 'FIGHTING') {
+      return
+    }
+
+    // Activer le mode souris (désactive l'animation idle)
+    isMouseModeActive.current = true
+
+    // Normaliser la position souris (-1 à 1)
+    const normalizedX = (screenX / window.innerWidth) * 2 - 1
+    const normalizedY = -(screenY / window.innerHeight) * 2 + 1
+
+    // Influence forte de la souris (1.0 = déplacement complet selon la position souris)
+    const mouseInfluence = 1.0
+    const offsetX = normalizedX * mouseInfluence
+    const offsetY = normalizedY * mouseInfluence * 0.6 // Un peu moins d'influence en Y
+
+    // Gant gauche: position de repos + influence souris (si pas en animation de punch)
+    if (leftGloveRef.current && !isPunchAnimating.current.left) {
+      const leftTarget = new THREE.Vector3(
+        REST_POSITION.left.x + offsetX,
+        REST_POSITION.left.y + offsetY,
+        REST_POSITION.left.z
+      )
+      // Interpolation rapide pour réactivité (0.3 = 30% par frame)
+      leftGloveRef.current.position.x += (leftTarget.x - leftGloveRef.current.position.x) * 0.3
+      leftGloveRef.current.position.y += (leftTarget.y - leftGloveRef.current.position.y) * 0.3
+      leftGloveRef.current.position.z += (leftTarget.z - leftGloveRef.current.position.z) * 0.3
+    }
+
+    // Gant droit: position de repos + influence souris (si pas en animation de punch)
+    if (rightGloveRef.current && !isPunchAnimating.current.right) {
+      const rightTarget = new THREE.Vector3(
+        REST_POSITION.right.x + offsetX,
+        REST_POSITION.right.y + offsetY,
+        REST_POSITION.right.z
+      )
+      // Interpolation rapide pour réactivité
+      rightGloveRef.current.position.x += (rightTarget.x - rightGloveRef.current.position.x) * 0.3
+      rightGloveRef.current.position.y += (rightTarget.y - rightGloveRef.current.position.y) * 0.3
+      rightGloveRef.current.position.z += (rightTarget.z - rightGloveRef.current.position.z) * 0.3
+    }
+  }
+
+  /**
+   * Animation de punch pour un gant spécifique (mode souris)
+   * Le gant part de sa position de garde et revient après le punch
+   * Note: Lit gameState directement du store pour éviter les problèmes de closure
+   */
+  const punchGlove = (hand: 'left' | 'right', screenX: number, screenY: number) => {
+    // Lire gameState frais du store (pas de la closure)
+    const currentGameState = useGameStore.getState().gameState
+    if (currentGameState !== 'FIGHTING') {
+      return
+    }
+
+    const glove = hand === 'left' ? leftGloveRef.current : rightGloveRef.current
+    if (!glove) {
+      return
+    }
+
+    // Marquer le gant comme en animation (empêche updateBothGloves et idle de le bouger)
+    isPunchAnimating.current[hand] = true
+
+    // Position cible du punch (vers le point cliqué)
+    const targetPos = screenToWorld(screenX, screenY, PUNCH_CONFIG.targetZ)
+
+    // Animation rapide: punch vers la cible puis retour à la position actuelle
+    const punchDuration = 0.1
+
+    // Sauvegarder la position actuelle pour le retour
+    const returnPos = {
+      x: glove.position.x,
+      y: glove.position.y,
+      z: REST_POSITION[hand].z
+    }
+
+    // Animation vers la cible
+    gsap.to(glove.position, {
+      x: targetPos.x,
+      y: targetPos.y,
+      z: PUNCH_CONFIG.targetZ,
+      duration: punchDuration,
+      ease: 'power2.out',
+      onComplete: () => {
+        // Retour à la position de garde (où le gant suivait la souris)
+        gsap.to(glove.position, {
+          x: returnPos.x,
+          y: returnPos.y,
+          z: returnPos.z,
+          duration: PUNCH_CONFIG.returnSpeed,
+          ease: PUNCH_CONFIG.easeOut,
+          onComplete: () => {
+            // Animation terminée, permettre à nouveau le suivi souris
+            isPunchAnimating.current[hand] = false
+          },
+        })
+      },
+    })
+
+    // Rotation de punch
+    gsap.to(glove.rotation, {
+      x: -0.5,
+      duration: punchDuration,
+      ease: 'power2.out',
+      onComplete: () => {
+        gsap.to(glove.rotation, {
+          x: 0.3,
+          y: hand === 'left' ? 0.2 : -0.2,
+          z: 0,
+          duration: PUNCH_CONFIG.returnSpeed,
+          ease: PUNCH_CONFIG.easeOut,
+        })
+      },
+    })
+  }
+
+  /**
    * Met à jour la position d'une main spécifique (mode caméra)
    * Permet le contrôle indépendant des deux gants
    */
@@ -381,10 +605,15 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
       get rightGlove() {
         return rightGloveRef.current
       },
-      // Méthodes tactile (rétrocompatibilité)
+      // Méthodes tactile
       startFollowing,
       updateFollowing,
       punchAndRelease,
+      quickPunch,
+      returnToRest,
+      // Méthodes souris (les deux gants suivent)
+      updateBothGloves,
+      punchGlove,
       // Méthodes caméra (contrôle indépendant)
       updateHandPosition,
       triggerPunch,
@@ -394,10 +623,19 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
 
   // Animation frame : suivi fluide + idle + feedback de profondeur
   useFrame((state) => {
-    if (gameState !== 'FIGHTING') return
+    const currentGameState = useGameStore.getState().gameState
+    if (currentGameState !== 'FIGHTING') return
 
     const t = state.clock.elapsedTime
     const smoothFactor = 1 - FOLLOW_CONFIG.smoothing
+
+    // Logging des positions toutes les 0.5 secondes
+    if (t - lastLogTime.current >= 0.5) {
+      lastLogTime.current = t
+      const leftPos = leftGloveRef.current?.position
+      const rightPos = rightGloveRef.current?.position
+      console.log(`[Gloves] L: (${leftPos?.x.toFixed(2)}, ${leftPos?.y.toFixed(2)}, ${leftPos?.z.toFixed(2)}) | R: (${rightPos?.x.toFixed(2)}, ${rightPos?.y.toFixed(2)}, ${rightPos?.z.toFixed(2)})`)
+    }
 
     // === Mode tactile : suivi du gant actif ===
     if (isFollowing.current && activeHand.current && !isAnimating.current) {
@@ -430,13 +668,18 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
     }
 
     // === Animation idle pour les gants non actifs ===
+    // Ne s'applique PAS si le mode souris est actif (les gants suivent la souris)
     const leftIsIdle =
+      !isMouseModeActive.current &&
+      !isPunchAnimating.current.left &&
       !isAnimating.current &&
       activeHand.current !== 'left' &&
       !leftHandTracking.current.isActive &&
       !leftHandTracking.current.isAnimating
 
     const rightIsIdle =
+      !isMouseModeActive.current &&
+      !isPunchAnimating.current.right &&
       !isAnimating.current &&
       activeHand.current !== 'right' &&
       !rightHandTracking.current.isActive &&

@@ -60,15 +60,21 @@ function Scene() {
     const interval = setInterval(() => {
       if (glovesRef.current?.leftGlove && glovesRef.current?.rightGlove) {
         registerGloves(glovesRef.current.leftGlove, glovesRef.current.rightGlove)
-        // Enregistrer les fonctions de suivi et coup (tactile + caméra)
+        // Enregistrer les fonctions de suivi et coup (tactile + souris + caméra)
         const gloves = glovesRef.current
         if (gloves.startFollowing && gloves.updateFollowing && gloves.punchAndRelease &&
-            gloves.updateHandPosition && gloves.triggerPunch) {
+            gloves.updateHandPosition && gloves.triggerPunch &&
+            gloves.updateBothGloves && gloves.punchGlove) {
           registerGlovesFunctions({
             // Méthodes tactile
             startFollowing: gloves.startFollowing,
             updateFollowing: gloves.updateFollowing,
             punchAndRelease: gloves.punchAndRelease,
+            quickPunch: gloves.quickPunch,
+            returnToRest: gloves.returnToRest,
+            // Méthodes souris (les deux gants suivent)
+            updateBothGloves: gloves.updateBothGloves,
+            punchGlove: gloves.punchGlove,
             // Méthodes caméra
             updateHandPosition: gloves.updateHandPosition,
             triggerPunch: gloves.triggerPunch,

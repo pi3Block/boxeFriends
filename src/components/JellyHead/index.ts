@@ -1,0 +1,7 @@
+export { JellyHeadOpponent } from './JellyHeadOpponent'
+export { Cranium } from './parts/Cranium'
+export { Eye } from './parts/Eye'
+export { Cheek } from './parts/Cheek'
+export { Nose } from './parts/Nose'
+export { Jaw } from './parts/Jaw'
+export { Ear } from './parts/Ear'

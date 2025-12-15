@@ -1,5 +1,5 @@
-export { useGestureInput, usePunchDrag } from './useGestureInput'
-export type { PunchData, PunchDragCallbacks } from './useGestureInput'
+export { useGestureInput, usePunchDrag, useMousePunch } from './useGestureInput'
+export type { PunchData, PunchDragCallbacks, MousePunchCallbacks } from './useGestureInput'
 
 export { useHitDetection } from './useHitDetection'
 

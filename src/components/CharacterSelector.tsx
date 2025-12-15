@@ -13,6 +13,12 @@ const AVAILABLE_MODELS: CharacterConfig[] = [
     scale: 1,
   },
   {
+    id: 'jellyhead',
+    name: 'Jelly Head',
+    modelPath: '', // Procédural - pas de GLB
+    scale: 1,
+  },
+  {
     id: 'facecap',
     name: 'Visage ARKit',
     modelPath: '/meshes/facecap.glb',
@@ -105,6 +111,24 @@ function CharacterIcon({ type }: { type: string }) {
     return (
       <svg className="h-10 w-10 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
         <circle cx="12" cy="12" r="10" />
+      </svg>
+    )
+  }
+
+  if (type === 'jellyhead') {
+    // Icône tête jelly avec effet wobble
+    return (
+      <svg className="h-10 w-10 text-pink-400" viewBox="0 0 24 24" fill="currentColor">
+        <ellipse cx="12" cy="11" rx="9" ry="10" />
+        {/* Yeux qui pop */}
+        <circle cx="8" cy="9" r="2.5" fill="white" />
+        <circle cx="16" cy="9" r="2.5" fill="white" />
+        <circle cx="8" cy="9" r="1" fill="#1f2937" />
+        <circle cx="16" cy="9" r="1" fill="#1f2937" />
+        {/* Nez */}
+        <ellipse cx="12" cy="13" rx="1.5" ry="2" fill="#e8a090" />
+        {/* Bouche */}
+        <path d="M8 17c2 1.5 6 1.5 8 0" stroke="#1f2937" strokeWidth="1.5" fill="none" strokeLinecap="round" />
       </svg>
     )
   }

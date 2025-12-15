@@ -18,3 +18,8 @@ export type { BlendShapeName, FacialState, FacialPresetName } from './useFacialS
 
 export { useHandTrackingStore } from './useHandTrackingStore'
 export type { HandState, CameraPermission } from './useHandTrackingStore'
+
+export { useJellyPhysicsStore } from './useJellyPhysicsStore'
+
+export { useCartoonEffectsStore } from './useCartoonEffectsStore'
+export type { CartoonEffectType, ActiveEffect } from './useCartoonEffectsStore'

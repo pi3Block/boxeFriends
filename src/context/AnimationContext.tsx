@@ -52,6 +52,11 @@ interface GlovesFunctions {
   startFollowing: (screenX: number, screenY: number) => void
   updateFollowing: (screenX: number, screenY: number) => void
   punchAndRelease: (screenX: number, screenY: number) => void
+  quickPunch: () => void
+  returnToRest: () => void
+  // Méthodes souris (les deux gants suivent)
+  updateBothGloves: (screenX: number, screenY: number) => void
+  punchGlove: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   // Méthodes caméra (contrôle indépendant)
   updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   triggerPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
@@ -66,6 +71,11 @@ interface AnimationContextType {
   startGloveFollow: (screenX: number, screenY: number) => void
   updateGloveFollow: (screenX: number, screenY: number) => void
   triggerPunchRelease: (screenX: number, screenY: number) => void
+  triggerQuickPunch: () => void
+  returnGloveToRest: () => void
+  // Fonctions souris (les deux gants suivent)
+  updateBothGloves: (screenX: number, screenY: number) => void
+  punchGlove: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   // Fonctions caméra (contrôle indépendant)
   updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   triggerHandPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
@@ -104,6 +114,25 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
   // Nouvelle fonction : déclencher le coup au relâchement
   const triggerPunchRelease = useCallback((screenX: number, screenY: number) => {
     glovesFuncsRef.current?.punchAndRelease(screenX, screenY)
+  }, [])
+
+  // Nouvelle fonction : retour à la position de repos (sans punch)
+  const returnGloveToRest = useCallback(() => {
+    glovesFuncsRef.current?.returnToRest()
+  }, [])
+
+  // Nouvelle fonction : punch rapide (animation Z seulement)
+  const triggerQuickPunch = useCallback(() => {
+    glovesFuncsRef.current?.quickPunch()
+  }, [])
+
+  // Fonctions souris : les deux gants suivent
+  const updateBothGloves = useCallback((screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.updateBothGloves(screenX, screenY)
+  }, [])
+
+  const punchGlove = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.punchGlove(hand, screenX, screenY)
   }, [])
 
   // Fonction caméra : mettre à jour la position d'une main spécifique
@@ -243,6 +272,11 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
         startGloveFollow,
         updateGloveFollow,
         triggerPunchRelease,
+        triggerQuickPunch,
+        returnGloveToRest,
+        // Souris
+        updateBothGloves,
+        punchGlove,
         // Caméra
         updateHandPosition,
         triggerHandPunch,

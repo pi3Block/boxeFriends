@@ -7,6 +7,7 @@ import { useGameStore, useImpactStore, useJellyStore, useTextureSettingsStore, t
 import { useSelectedCharacter } from '../stores/useCharacterStore'
 import { DeformableFaceMaterial } from '../shaders'
 import { FaceOpponent } from './FaceOpponent'
+import { JellyHeadOpponent } from './JellyHead'
 
 // #region agent log
 const LOG_ENDPOINT = 'http://127.0.0.1:7243/ingest/bb23579b-81a8-4ebb-a165-6e012391b778'
@@ -46,10 +47,22 @@ export function CharacterModel({ textureUrl }: CharacterModelProps) {
   log('CharacterModel.tsx:24', 'Character selected', { hasCharacter: !!character, hasModelPath: !!character?.modelPath }, 'H3')
   // #endregion
 
+  // JellyHead procédural
+  if (character?.id === 'jellyhead') {
+    // #region agent log
+    log('CharacterModel.tsx:30', 'Returning JellyHeadOpponent', {}, 'H3')
+    // #endregion
+    return (
+      <Suspense fallback={<SphereOpponent textureUrl={textureUrl} />}>
+        <JellyHeadOpponent textureUrl={textureUrl} />
+      </Suspense>
+    )
+  }
+
   // Si pas de modèle GLB sélectionné, utiliser la sphère
   if (!character || !character.modelPath) {
     // #region agent log
-    log('CharacterModel.tsx:30', 'Returning SphereOpponent', {}, 'H3')
+    log('CharacterModel.tsx:42', 'Returning SphereOpponent', {}, 'H3')
     // #endregion
     return <SphereOpponent textureUrl={textureUrl} />
   }

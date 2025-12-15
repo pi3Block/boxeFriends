@@ -40,6 +40,12 @@ const DEFAULT_CHARACTERS: CharacterConfig[] = [
     scale: 1,
   },
   {
+    id: 'jellyhead',
+    name: 'Jelly Head',
+    modelPath: '', // Procédural - pas de GLB
+    scale: 1,
+  },
+  {
     id: 'facecap',
     name: 'Visage ARKit',
     modelPath: '/meshes/facecap.glb',
@@ -51,7 +57,7 @@ const DEFAULT_CHARACTERS: CharacterConfig[] = [
 
 export const useCharacterStore = create<CharacterStore>((set, get) => ({
   characters: DEFAULT_CHARACTERS,
-  selectedCharacterId: 'sphere',
+  selectedCharacterId: 'facecap',
 
   setCharacters: (characters) => {
     set({ characters })

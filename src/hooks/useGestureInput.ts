@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { useDrag, useGesture } from '@use-gesture/react'
 import type { PunchType } from '../stores'
 
@@ -156,35 +156,20 @@ export interface PunchDragCallbacks {
   onDragStart?: (screenX: number, screenY: number) => void
   onDragMove?: (screenX: number, screenY: number) => void
   onDragEnd: (data: PunchData) => void
+  onRelease?: () => void
 }
 
 /**
- * Hook amélioré pour la gestion des gestes de boxe
- * - onDragStart : appelé quand le doigt/clic commence (gant commence à suivre)
- * - onDragMove : appelé pendant le mouvement (gant suit)
- * - onDragEnd : appelé au relâchement (coup déclenché)
+ * Hook legacy pour compatibilité
  */
 export function usePunchDrag(callbacks: PunchDragCallbacks, enabled = true) {
-  const { onDragStart, onDragMove, onDragEnd } = callbacks
+  const { onDragMove, onDragEnd } = callbacks
 
   const bind = useDrag(
-    ({ movement: [dx, dy], velocity: [vx, vy], xy: [x, y], first, last, tap, active }) => {
+    ({ xy: [x, y], first, last, active }) => {
       if (!enabled) return
 
-      // Premier contact : démarrer le suivi
-      if (first && !tap) {
-        onDragStart?.(x, y)
-        return
-      }
-
-      // Pendant le drag : mettre à jour la position
-      if (active && !first && !last && !tap) {
-        onDragMove?.(x, y)
-        return
-      }
-
-      // Tap rapide → Jab immédiat
-      if (tap) {
+      if (first) {
         onDragEnd({
           type: 'jab',
           velocity: 0.6,
@@ -194,40 +179,75 @@ export function usePunchDrag(callbacks: PunchDragCallbacks, enabled = true) {
         return
       }
 
-      // Relâchement → déclencher le coup
-      if (last) {
-        const distance = Math.sqrt(dx * dx + dy * dy)
-        const totalVelocity = Math.sqrt(vx * vx + vy * vy)
-
-        const absX = Math.abs(dx)
-        const absY = Math.abs(dy)
-
-        // Déterminer le type de coup
-        let type: PunchType = 'jab'
-        if (distance >= SWIPE_THRESHOLD) {
-          if (absY > absX * VERTICAL_RATIO && dy < 0) {
-            type = 'uppercut'
-          } else if (absX > absY) {
-            type = 'hook'
-          }
-        }
-
-        // Calculer la vélocité (minimum 0.5 pour que le coup soit visible)
-        const normalizedVelocity = Math.max(0.5, Math.min(totalVelocity / MAX_VELOCITY, 1))
-
-        onDragEnd({
-          type,
-          velocity: normalizedVelocity,
-          direction: [dx === 0 ? 0 : dx / (absX || 1), dy === 0 ? 0 : dy / (absY || 1)],
-          screenPosition: [x, y],
-        })
+      if (active && !first && !last) {
+        onDragMove?.(x, y)
+        return
       }
     },
     {
-      filterTaps: true,
-      threshold: 3, // Seuil bas pour répondre vite
+      filterTaps: false,
+      threshold: 1,
     }
   )
 
   return bind
+}
+
+/**
+ * Callbacks pour le système souris avec suivi permanent
+ */
+export interface MousePunchCallbacks {
+  onMouseMove: (screenX: number, screenY: number) => void
+  onLeftPunch: (data: PunchData) => void
+  onRightPunch: (data: PunchData) => void
+}
+
+/**
+ * Hook pour gestion souris: gants suivent toujours, clic gauche/droit = punch
+ */
+export function useMousePunch(callbacks: MousePunchCallbacks, enabled = true) {
+  const { onMouseMove, onLeftPunch, onRightPunch } = callbacks
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!enabled) return
+    onMouseMove(e.clientX, e.clientY)
+  }, [enabled, onMouseMove])
+
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    if (!enabled) return
+
+    const punchData: PunchData = {
+      type: 'jab',
+      velocity: 0.6,
+      direction: [0, 0],
+      screenPosition: [e.clientX, e.clientY],
+    }
+
+    // Bouton 0 = clic gauche, bouton 2 = clic droit
+    if (e.button === 0) {
+      onLeftPunch(punchData)
+    } else if (e.button === 2) {
+      onRightPunch(punchData)
+    }
+  }, [enabled, onLeftPunch, onRightPunch])
+
+  const handleContextMenu = useCallback((e: MouseEvent) => {
+    if (!enabled) return
+    e.preventDefault() // Empêcher le menu contextuel
+  }, [enabled])
+
+  // Attacher les événements au document
+  useEffect(() => {
+    if (!enabled) return
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('contextmenu', handleContextMenu)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('contextmenu', handleContextMenu)
+    }
+  }, [enabled, handleMouseMove, handleMouseDown, handleContextMenu])
 }

@@ -90,7 +90,7 @@ interface UseUnifiedInputReturn {
 
 /**
  * Calcule la position écran calibrée pour une main
- * Mappe le delta entre position actuelle et calibration vers les positions de gant
+ * Utilise directement screenPosition (déjà en miroir) et mappe vers la zone de jeu
  */
 function calculateCalibratedPosition(
   hand: HandState,
@@ -99,28 +99,34 @@ function calculateCalibratedPosition(
   screenWidth: number,
   screenHeight: number
 ): { x: number; y: number } {
-  // Position actuelle normalisée du poignet (landmark 0)
-  const currentNormalized = hand.landmarks[0] || { x: 0.5, y: 0.5 }
+  // Utiliser screenPosition qui est déjà correctement calculé avec le miroir
+  // C'est la même position que le cercle bleu de debug
+  const currentScreenPos = hand.screenPosition
 
-  // Position de repos du gant
-  const restPosition = GLOVE_REST_POSITIONS[handSide]
-
-  if (!calibration) {
-    // Sans calibration, utiliser la position brute inversée en X (miroir caméra)
-    return {
-      x: (1 - currentNormalized.x) * screenWidth,
-      y: currentNormalized.y * screenHeight,
-    }
+  // Position de repos du gant (en pixels)
+  const restPosition = {
+    x: GLOVE_REST_POSITIONS[handSide].x * screenWidth,
+    y: GLOVE_REST_POSITIONS[handSide].y * screenHeight,
   }
 
-  // Calculer le delta depuis la position calibrée
-  // Note: on inverse X car la caméra est en miroir
-  const deltaX = (calibration.x - currentNormalized.x) * MOVEMENT_SENSITIVITY
-  const deltaY = (currentNormalized.y - calibration.y) * MOVEMENT_SENSITIVITY
+  if (!calibration) {
+    // Sans calibration, utiliser directement la position écran
+    return currentScreenPos
+  }
+
+  // Convertir la calibration en coordonnées écran (avec miroir)
+  const calibrationScreen = {
+    x: (1 - calibration.x) * screenWidth,
+    y: calibration.y * screenHeight,
+  }
+
+  // Calculer le delta depuis la position calibrée (en pixels)
+  const deltaX = (currentScreenPos.x - calibrationScreen.x) * MOVEMENT_SENSITIVITY
+  const deltaY = (currentScreenPos.y - calibrationScreen.y) * MOVEMENT_SENSITIVITY
 
   // Appliquer le delta à la position de repos du gant
-  const calibratedX = (restPosition.x + deltaX) * screenWidth
-  const calibratedY = (restPosition.y + deltaY) * screenHeight
+  const calibratedX = restPosition.x + deltaX
+  const calibratedY = restPosition.y + deltaY
 
   // Clamp aux limites de l'écran
   return {
