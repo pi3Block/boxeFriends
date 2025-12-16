@@ -25,7 +25,7 @@ const HITSTOP_CONFIG = {
 }
 
 /**
- * Interface pour une particule
+ * Interface pour une particule (avec pooling)
  */
 interface Particle {
   position: THREE.Vector3
@@ -34,6 +34,7 @@ interface Particle {
   size: number
   life: number
   maxLife: number
+  active: boolean // Flag pour le pooling - évite de créer de nouveaux arrays
 }
 
 /**
@@ -42,12 +43,27 @@ interface Particle {
  * - Effet hit-stop (freeze frame)
  * - Lignes de vitesse radiales
  */
+// Taille du pool de particules (fixe, pas de réallocation)
+const POOL_SIZE = PARTICLE_CONFIG.count * 50
+
 export function ImpactEffects() {
   const impacts = useImpactStore((state) => state.impacts)
   const lastImpactId = useRef<number>(-1)
-  const particles = useRef<Particle[]>([])
   const hitStopTime = useRef<number>(0)
   useThree() // Pour accéder au contexte Three.js
+
+  // Pool de particules pré-alloué (évite les allocations à chaque impact)
+  const particlePool = useRef<Particle[]>(
+    Array.from({ length: POOL_SIZE }, () => ({
+      position: new THREE.Vector3(),
+      velocity: new THREE.Vector3(),
+      color: new THREE.Color(),
+      size: 0,
+      life: 0,
+      maxLife: 0,
+      active: false,
+    }))
+  )
 
   // Références pour le mesh de particules
   const particlesRef = useRef<THREE.Points>(null)
@@ -103,41 +119,41 @@ export function ImpactEffects() {
   }, [])
 
   /**
-   * Crée des particules à partir d'un point d'impact
+   * Crée des particules à partir d'un point d'impact (utilise le pool)
+   * Pas d'allocation mémoire - réutilise les particules inactives
    */
   const spawnParticles = (hitPoint: [number, number, number], strength: number) => {
     const count = Math.floor(PARTICLE_CONFIG.count * strength)
+    let spawned = 0
 
-    for (let i = 0; i < count; i++) {
+    for (const particle of particlePool.current) {
+      if (spawned >= count) break
+      if (particle.active) continue
+
       // Direction aléatoire (hémisphère vers la caméra)
       const theta = Math.random() * Math.PI * 2
-      const phi = Math.random() * Math.PI * 0.5 // Hémisphère avant
-
-      const dir = new THREE.Vector3(
-        Math.sin(phi) * Math.cos(theta),
-        Math.sin(phi) * Math.sin(theta),
-        Math.cos(phi)
-      )
+      const phi = Math.random() * Math.PI * 0.5
 
       const speed = PARTICLE_CONFIG.speed * (0.5 + Math.random() * 0.5) * strength
 
-      // Choisir une couleur aléatoire
+      // Réutiliser les objets existants (pas de new)
+      particle.position.set(hitPoint[0], hitPoint[1], hitPoint[2])
+      particle.velocity.set(
+        Math.sin(phi) * Math.cos(theta) * speed,
+        Math.sin(phi) * Math.sin(theta) * speed,
+        Math.cos(phi) * speed
+      )
+
+      // Couleur aléatoire
       const colorHex = PARTICLE_CONFIG.colors[Math.floor(Math.random() * PARTICLE_CONFIG.colors.length)]
-      const color = new THREE.Color(colorHex)
+      particle.color.set(colorHex)
 
-      particles.current.push({
-        position: new THREE.Vector3(hitPoint[0], hitPoint[1], hitPoint[2]),
-        velocity: dir.multiplyScalar(speed),
-        color,
-        size: PARTICLE_CONFIG.size * (0.5 + Math.random()),
-        life: PARTICLE_CONFIG.lifetime,
-        maxLife: PARTICLE_CONFIG.lifetime,
-      })
-    }
+      particle.size = PARTICLE_CONFIG.size * (0.5 + Math.random())
+      particle.life = PARTICLE_CONFIG.lifetime
+      particle.maxLife = PARTICLE_CONFIG.lifetime
+      particle.active = true
 
-    // Limiter le nombre total de particules
-    if (particles.current.length > PARTICLE_CONFIG.count * 50) {
-      particles.current = particles.current.slice(-PARTICLE_CONFIG.count * 50)
+      spawned++
     }
   }
 
@@ -215,7 +231,7 @@ export function ImpactEffects() {
     }
   }, [impacts])
 
-  // Animation des particules
+  // Animation des particules (optimisée avec pooling - pas de filter())
   useFrame((_, delta) => {
     // Hit-stop : ralentir le temps
     let effectiveDelta = delta
@@ -224,18 +240,23 @@ export function ImpactEffects() {
       effectiveDelta = delta * 0.1 // Ralentir à 10%
     }
 
-    // Mettre à jour les particules
-    particles.current = particles.current.filter((p) => {
+    // Mettre à jour les particules actives (pas de création d'array)
+    for (const p of particlePool.current) {
+      if (!p.active) continue
+
       p.life -= effectiveDelta
 
-      if (p.life <= 0) return false
+      if (p.life <= 0) {
+        p.active = false // Désactiver au lieu de filter()
+        continue
+      }
 
-      // Physique
+      // Physique (modification in-place, pas de clone())
       p.velocity.y += PARTICLE_CONFIG.gravity * effectiveDelta
-      p.position.add(p.velocity.clone().multiplyScalar(effectiveDelta))
-
-      return true
-    })
+      p.position.x += p.velocity.x * effectiveDelta
+      p.position.y += p.velocity.y * effectiveDelta
+      p.position.z += p.velocity.z * effectiveDelta
+    }
 
     // Mettre à jour la géométrie des particules
     if (particlesRef.current) {
@@ -243,16 +264,21 @@ export function ImpactEffects() {
       const colors = particleGeometry.attributes.color as THREE.BufferAttribute
       const sizes = particleGeometry.attributes.size as THREE.BufferAttribute
 
-      particles.current.forEach((p, i) => {
-        positions.setXYZ(i, p.position.x, p.position.y, p.position.z)
+      let visibleIndex = 0
+      for (const p of particlePool.current) {
+        if (p.active) {
+          positions.setXYZ(visibleIndex, p.position.x, p.position.y, p.position.z)
 
-        const lifeRatio = p.life / p.maxLife
-        colors.setXYZ(i, p.color.r * lifeRatio, p.color.g * lifeRatio, p.color.b * lifeRatio)
-        sizes.setX(i, p.size * lifeRatio)
-      })
+          const lifeRatio = p.life / p.maxLife
+          colors.setXYZ(visibleIndex, p.color.r * lifeRatio, p.color.g * lifeRatio, p.color.b * lifeRatio)
+          sizes.setX(visibleIndex, p.size * lifeRatio)
+
+          visibleIndex++
+        }
+      }
 
       // Cacher les particules non utilisées
-      for (let i = particles.current.length; i < PARTICLE_CONFIG.count * 50; i++) {
+      for (let i = visibleIndex; i < POOL_SIZE; i++) {
         positions.setXYZ(i, 0, 0, -100)
         sizes.setX(i, 0)
       }

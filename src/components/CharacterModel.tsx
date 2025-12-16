@@ -3,29 +3,25 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, useTexture, Sphere } from '@react-three/drei'
 import type { Group, Mesh, SkinnedMesh, Texture } from 'three'
 import * as THREE from 'three'
-import { useGameStore, useImpactStore, useJellyStore, useTextureSettingsStore, type JellyParams, type TextureSettings } from '../stores'
+import { useShallow } from 'zustand/react/shallow'
+import { useGameStore, useImpactStore, useJellyStore, type JellyParams, type TextureSettings } from '../stores'
 import { useSelectedCharacter } from '../stores/useCharacterStore'
 import { DeformableFaceMaterial } from '../shaders'
 import { FaceOpponent } from './FaceOpponent'
 import { JellyHeadOpponent } from './JellyHead'
+import { FluffyOpponent } from './FluffyOpponent'
 
-// #region agent log
+// #region debug logging (DEV only)
 const LOG_ENDPOINT = 'http://127.0.0.1:7243/ingest/bb23579b-81a8-4ebb-a165-6e012391b778'
-const log = (location: string, message: string, data: any, hypothesisId?: string) => {
-  fetch(LOG_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId,
-    }),
-  }).catch(() => {})
-}
+const log = import.meta.env.DEV
+  ? (location: string, message: string, data: any, hypothesisId?: string) => {
+      fetch(LOG_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId }),
+      }).catch(() => {})
+    }
+  : () => {} // No-op en production
 // #endregion
 
 interface CharacterModelProps {
@@ -55,6 +51,18 @@ export function CharacterModel({ textureUrl }: CharacterModelProps) {
     return (
       <Suspense fallback={<SphereOpponent textureUrl={textureUrl} />}>
         <JellyHeadOpponent textureUrl={textureUrl} />
+      </Suspense>
+    )
+  }
+
+  // Fluffy soft body (physique volumétrique style ammo.js)
+  if (character?.id === 'fluffy') {
+    // #region agent log
+    log('CharacterModel.tsx:42', 'Returning FluffyOpponent', {}, 'H3')
+    // #endregion
+    return (
+      <Suspense fallback={<SphereOpponent textureUrl={textureUrl} />}>
+        <FluffyOpponent textureUrl={textureUrl} />
       </Suspense>
     )
   }
@@ -148,7 +156,9 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
   const impacts = useImpactStore((state) => state.impacts)
   const addImpact = useImpactStore((state) => state.addImpact)
   const jellyParams = useJellyStore()
-  const textureSettings = useTextureSettingsStore()
+  const textureSettings = useGameStore(
+    useShallow((s) => ({ zoom: s.textureZoom, offsetX: s.textureOffsetX, offsetY: s.textureOffsetY }))
+  )
 
   // État spring-mass pour chaque partie
   // Proportions inversées : grosse tête, petit corps, minuscules jambes

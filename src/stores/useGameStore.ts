@@ -16,6 +16,21 @@ export type PunchType = 'jab' | 'hook' | 'uppercut'
 export const DEFAULT_OPPONENT_TEXTURE = '/textures/default.png'
 
 /**
+ * Paramètres de transformation de texture (fusionné depuis useTextureSettingsStore)
+ */
+export interface TextureSettings {
+  zoom: number       // Niveau de zoom (1 = normal, >1 = zoom in)
+  offsetX: number    // Décalage horizontal (-1 à 1)
+  offsetY: number    // Décalage vertical (-1 à 1)
+}
+
+export const DEFAULT_TEXTURE_SETTINGS: TextureSettings = {
+  zoom: 1.2,
+  offsetX: 0.05,
+  offsetY: 0.00,
+}
+
+/**
  * Interface du store principal du jeu
  */
 interface GameStore {
@@ -32,6 +47,12 @@ interface GameStore {
   opponentTexture: string // URL de la texture (défaut ou blob uploadé)
   isCustomTexture: boolean // true si l'utilisateur a uploadé une photo
 
+  // Paramètres texture (fusionné)
+  textureZoom: number
+  textureOffsetX: number
+  textureOffsetY: number
+  textureEditMode: boolean
+
   // Timestamp du dernier coup (pour reset combo)
   lastHitTime: number
 
@@ -44,6 +65,14 @@ interface GameStore {
   resetCombo: () => void
   startFight: () => void
   resetGame: () => void
+
+  // Actions texture (fusionné)
+  setTextureEditMode: (mode: boolean) => void
+  setTextureZoom: (zoom: number) => void
+  setTextureOffsetX: (x: number) => void
+  setTextureOffsetY: (y: number) => void
+  setTextureSettings: (settings: Partial<TextureSettings>) => void
+  resetTextureSettings: () => void
 }
 
 // Délai avant reset du combo (ms)
@@ -65,6 +94,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   opponentTexture: DEFAULT_OPPONENT_TEXTURE,
   isCustomTexture: false,
   lastHitTime: 0,
+
+  // Texture settings (fusionné)
+  textureZoom: DEFAULT_TEXTURE_SETTINGS.zoom,
+  textureOffsetX: DEFAULT_TEXTURE_SETTINGS.offsetX,
+  textureOffsetY: DEFAULT_TEXTURE_SETTINGS.offsetY,
+  textureEditMode: false,
 
   // Définir la texture de l'adversaire (upload utilisateur)
   setTexture: (url: string) => {
@@ -174,6 +209,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
       opponentTexture: DEFAULT_OPPONENT_TEXTURE,
       isCustomTexture: false,
       lastHitTime: 0,
+      // Reset texture settings aussi
+      textureZoom: DEFAULT_TEXTURE_SETTINGS.zoom,
+      textureOffsetX: DEFAULT_TEXTURE_SETTINGS.offsetX,
+      textureOffsetY: DEFAULT_TEXTURE_SETTINGS.offsetY,
+      textureEditMode: false,
     })
   },
+
+  // Actions texture (fusionné depuis useTextureSettingsStore)
+  setTextureEditMode: (mode) => set({ textureEditMode: mode }),
+  setTextureZoom: (zoom) => set({ textureZoom: zoom }),
+  setTextureOffsetX: (x) => set({ textureOffsetX: x }),
+  setTextureOffsetY: (y) => set({ textureOffsetY: y }),
+  setTextureSettings: (settings) => set({
+    ...(settings.zoom !== undefined && { textureZoom: settings.zoom }),
+    ...(settings.offsetX !== undefined && { textureOffsetX: settings.offsetX }),
+    ...(settings.offsetY !== undefined && { textureOffsetY: settings.offsetY }),
+  }),
+  resetTextureSettings: () => set({
+    textureZoom: DEFAULT_TEXTURE_SETTINGS.zoom,
+    textureOffsetX: DEFAULT_TEXTURE_SETTINGS.offsetX,
+    textureOffsetY: DEFAULT_TEXTURE_SETTINGS.offsetY,
+  }),
 }))

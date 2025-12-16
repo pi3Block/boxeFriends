@@ -56,16 +56,17 @@ interface GlovesFunctions {
   returnToRest: () => void
   // Méthodes souris (les deux gants suivent)
   updateBothGloves: (screenX: number, screenY: number) => void
-  punchGlove: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  triggerMousePunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   // Méthodes caméra (contrôle indépendant)
   updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
-  triggerPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  cameraPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
 }
 
 interface AnimationContextType {
   registerGloves: (left: GloveObject, right: GloveObject) => void
   registerCamera: (camera: Camera) => void
   registerGlovesFunctions: (funcs: GlovesFunctions) => void
+  /** Animation GSAP legacy pour effets visuels du punch */
   triggerPunch: (type: PunchType, hand: 'left' | 'right', velocity: number, isCritical: boolean) => void
   // Fonctions tactile (alternance automatique)
   startGloveFollow: (screenX: number, screenY: number) => void
@@ -75,10 +76,12 @@ interface AnimationContextType {
   returnGloveToRest: () => void
   // Fonctions souris (les deux gants suivent)
   updateBothGloves: (screenX: number, screenY: number) => void
-  punchGlove: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  /** Punch déclenché par clic souris */
+  triggerMousePunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   // Fonctions caméra (contrôle indépendant)
   updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
-  triggerHandPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  /** Punch déclenché par geste caméra MediaPipe */
+  triggerCameraPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   // Effets
   triggerCameraShake: (intensity: number) => void
 }
@@ -131,8 +134,8 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
     glovesFuncsRef.current?.updateBothGloves(screenX, screenY)
   }, [])
 
-  const punchGlove = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
-    glovesFuncsRef.current?.punchGlove(hand, screenX, screenY)
+  const triggerMousePunch = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.triggerMousePunch(hand, screenX, screenY)
   }, [])
 
   // Fonction caméra : mettre à jour la position d'une main spécifique
@@ -141,8 +144,8 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // Fonction caméra : déclencher un coup pour une main spécifique
-  const triggerHandPunch = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
-    glovesFuncsRef.current?.triggerPunch(hand, screenX, screenY)
+  const triggerCameraPunch = useCallback((hand: 'left' | 'right', screenX: number, screenY: number) => {
+    glovesFuncsRef.current?.cameraPunch(hand, screenX, screenY)
   }, [])
 
   const registerCamera = useCallback((camera: Camera) => {
@@ -276,10 +279,10 @@ export function AnimationProvider({ children }: { children: ReactNode }) {
         returnGloveToRest,
         // Souris
         updateBothGloves,
-        punchGlove,
+        triggerMousePunch,
         // Caméra
         updateHandPosition,
-        triggerHandPunch,
+        triggerCameraPunch,
         // Effets
         triggerCameraShake,
       }}

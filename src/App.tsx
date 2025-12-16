@@ -1,12 +1,15 @@
 import { useCallback, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { PerspectiveCamera, Environment } from '@react-three/drei'
+import { Perf } from 'r3f-perf'
+import { useShallow } from 'zustand/react/shallow'
 import Scene from './components/Scene'
 import { UI } from './components/UI'
 import { JellyControls } from './components/JellyControls'
 import { ImpactOverlay } from './components/ImpactOverlay'
 import { HandTrackingOverlay } from './components/HandTrackingOverlay'
 import { CalibrationOverlay } from './components/CalibrationOverlay'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useMousePunch, useUnifiedInput, type PunchData, type CameraInputCallbacks } from './hooks'
 import { useGameStore, useImpactStore, useHandTrackingStore } from './stores'
 import { AnimationProvider, useAnimationContext } from './context'
@@ -15,14 +18,16 @@ import { AnimationProvider, useAnimationContext } from './context'
  * Composant interne avec accès au contexte d'animation
  */
 function AppContent() {
-  const gameState = useGameStore((state) => state.gameState)
-  const takeDamage = useGameStore((state) => state.takeDamage)
+  // Selectors consolidés avec useShallow pour éviter les re-renders inutiles
+  const { gameState, takeDamage } = useGameStore(
+    useShallow((state) => ({ gameState: state.gameState, takeDamage: state.takeDamage }))
+  )
   const addImpact = useImpactStore((state) => state.addImpact)
   const isCameraEnabled = useHandTrackingStore((state) => state.isCameraEnabled)
   const {
     triggerPunch,
     updateBothGloves,
-    punchGlove,
+    triggerMousePunch,
     updateHandPosition,
     triggerCameraShake
   } = useAnimationContext()
@@ -66,7 +71,7 @@ function AppContent() {
       takeDamage(damage, isCritical)
 
       // Déclencher l'animation du punch pour ce gant
-      punchGlove(hand, screenPosition[0], screenPosition[1])
+      triggerMousePunch(hand, screenPosition[0], screenPosition[1])
 
       // Camera shake
       triggerCameraShake(velocity * mult)
@@ -81,7 +86,7 @@ function AppContent() {
         )
       }
     },
-    [gameState, addImpact, takeDamage, triggerPunch, punchGlove, triggerCameraShake]
+    [gameState, addImpact, takeDamage, triggerPunch, triggerMousePunch, triggerCameraShake]
   )
 
   // Hook souris: gants suivent, clic gauche = poing gauche, clic droit = poing droit
@@ -114,6 +119,9 @@ function AppContent() {
       {/* Container avec gestes - touch-none requis pour @use-gesture */}
       <div className="h-full w-full touch-none">
         <Canvas dpr={[1, 2]}>
+          {/* Performance monitor (DEV only) */}
+          {import.meta.env.DEV && <Perf position="top-left" />}
+
           {/* Configuration de la caméra - FOV 75, position fixe */}
           <PerspectiveCamera makeDefault position={[0, 0, 5]} fov={75} />
 
@@ -152,13 +160,15 @@ function AppContent() {
 }
 
 /**
- * Composant principal avec Provider
+ * Composant principal avec Provider et Error Boundary
  */
 function App() {
   return (
-    <AnimationProvider>
-      <AppContent />
-    </AnimationProvider>
+    <ErrorBoundary>
+      <AnimationProvider>
+        <AppContent />
+      </AnimationProvider>
+    </ErrorBoundary>
   )
 }
 

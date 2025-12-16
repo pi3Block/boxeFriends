@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import {
   useJellyStore,
   DEFAULT_JELLY_PARAMS,
-  useTextureSettingsStore,
+  useGameStore,
   DEFAULT_TEXTURE_SETTINGS,
 } from '../stores'
 
@@ -15,8 +15,8 @@ export function JellyControls() {
   const setJellyParams = useJellyStore((state) => state.setParams)
   const resetJelly = useJellyStore((state) => state.reset)
 
-  const setTextureSettings = useTextureSettingsStore((state) => state.setSettings)
-  const resetTexture = useTextureSettingsStore((state) => state.reset)
+  const setTextureSettings = useGameStore((state) => state.setTextureSettings)
+  const resetTexture = useGameStore((state) => state.resetTextureSettings)
 
   // Contrôles pour l'effet jelly (réduit - seulement les paramètres essentiels)
   const jellyValues = useControls({

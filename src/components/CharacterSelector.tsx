@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useGLTF } from '@react-three/drei'
 import { useCharacterStore, type CharacterConfig } from '../stores/useCharacterStore'
 
 /**
@@ -19,6 +20,12 @@ const AVAILABLE_MODELS: CharacterConfig[] = [
     scale: 1,
   },
   {
+    id: 'fluffy',
+    name: 'Fluffy',
+    modelPath: '', // Procédural - soft body volumétrique
+    scale: 1.2,
+  },
+  {
     id: 'facecap',
     name: 'Visage ARKit',
     modelPath: '/meshes/facecap.glb',
@@ -33,6 +40,13 @@ const AVAILABLE_MODELS: CharacterConfig[] = [
     headBone: 'head',
   },
 ]
+
+// Preload GLTF models en background pour éviter le lag au premier chargement
+AVAILABLE_MODELS.forEach((model) => {
+  if (model.modelPath) {
+    useGLTF.preload(model.modelPath)
+  }
+})
 
 /**
  * Composant de sélection de personnage dans le lobby
@@ -129,6 +143,25 @@ function CharacterIcon({ type }: { type: string }) {
         <ellipse cx="12" cy="13" rx="1.5" ry="2" fill="#e8a090" />
         {/* Bouche */}
         <path d="M8 17c2 1.5 6 1.5 8 0" stroke="#1f2937" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      </svg>
+    )
+  }
+
+  if (type === 'fluffy') {
+    // Icône fluffy soft body - ballon rebondissant
+    return (
+      <svg className="h-10 w-10 text-pink-300" viewBox="0 0 24 24" fill="currentColor">
+        {/* Corps principal gonflé */}
+        <circle cx="12" cy="12" r="10" fill="currentColor" />
+        {/* Reflet pour effet ballon */}
+        <ellipse cx="8" cy="8" rx="3" ry="2" fill="white" opacity="0.4" />
+        {/* Yeux */}
+        <circle cx="9" cy="11" r="2" fill="white" />
+        <circle cx="15" cy="11" r="2" fill="white" />
+        <circle cx="9" cy="11" r="0.8" fill="#1f2937" />
+        <circle cx="15" cy="11" r="0.8" fill="#1f2937" />
+        {/* Bouche souriante */}
+        <path d="M9 15c1.5 1.5 4.5 1.5 6 0" stroke="#1f2937" strokeWidth="1.2" fill="none" strokeLinecap="round" />
       </svg>
     )
   }

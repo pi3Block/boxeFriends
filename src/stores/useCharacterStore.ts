@@ -46,6 +46,12 @@ const DEFAULT_CHARACTERS: CharacterConfig[] = [
     scale: 1,
   },
   {
+    id: 'fluffy',
+    name: 'Fluffy (Soft Body)',
+    modelPath: '', // Procédural - soft body volumétrique
+    scale: 1.2,
+  },
+  {
     id: 'facecap',
     name: 'Visage ARKit',
     modelPath: '/meshes/facecap.glb',

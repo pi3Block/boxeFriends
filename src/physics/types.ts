@@ -16,7 +16,7 @@ export interface Particle {
 /**
  * Types de contraintes supportées
  */
-export type ConstraintType = 'distance' | 'volume' | 'bending' | 'attachment'
+export type ConstraintType = 'distance' | 'volume' | 'bending' | 'attachment' | 'pressure'
 
 /**
  * Contrainte XPBD générique
@@ -45,6 +45,18 @@ export interface VolumeConstraint extends Constraint {
   type: 'volume'
   particleIds: number[]        // Tous les particles du volume
   restValue: number            // Volume au repos
+}
+
+/**
+ * Contrainte de pression (soft body gonflable style ammo.js)
+ * Pousse les vertices vers l'extérieur selon les normales
+ */
+export interface PressureConstraint extends Constraint {
+  type: 'pressure'
+  particleIds: number[]        // Tous les particles de la surface
+  restValue: number            // Volume au repos
+  pressure: number             // Pression interne (kPR dans ammo.js, ex: 120-250)
+  triangles: [number, number, number][]  // Indices des triangles pour calcul normales
 }
 
 /**

@@ -181,3 +181,4 @@ export default defineConfig({
 ### Modèles 3D
 - `/meshes/facecap.glb` : Modèle ARKit avec morph targets pour animations faciales
 - `/meshes/Humanoid.glb` : Modèle humanoïde générique
+

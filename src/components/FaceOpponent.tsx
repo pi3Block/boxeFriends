@@ -6,8 +6,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
-import { useImpactStore, useFacialStore, ARKIT_BLEND_SHAPES, type BlendShapeName, useTextureSettingsStore } from '../stores'
-import { useGameStore } from '../stores'
+import { useImpactStore, useFacialStore, useGameStore, ARKIT_BLEND_SHAPES, type BlendShapeName } from '../stores'
+import { useShallow } from 'zustand/react/shallow'
 import { HairSystem } from './HairSystem'
 
 /**
@@ -139,8 +139,10 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
   const transitionSpeed = useFacialStore((state) => state.transitionSpeed)
   const triggerHitReaction = useFacialStore((state) => state.triggerHitReaction)
 
-  // Texture settings
-  const textureSettings = useTextureSettingsStore()
+  // Texture settings (fusionné dans useGameStore)
+  const { textureZoom, textureOffsetX, textureOffsetY } = useGameStore(
+    useShallow((s) => ({ textureZoom: s.textureZoom, textureOffsetX: s.textureOffsetX, textureOffsetY: s.textureOffsetY }))
+  )
 
   // State pour la texture chargée
   const [faceTexture, setFaceTexture] = useState<THREE.Texture | null>(null)
@@ -198,9 +200,9 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
     uBoundsMin: { value: new THREE.Vector3(-0.1, -0.15, -0.1) },
     uBoundsMax: { value: new THREE.Vector3(0.1, 0.12, 0.1) },
     // Zoom et offset directement depuis les settings (la calibration est dans le shader)
-    uTextureZoom: { value: textureSettings.zoom },
-    uTextureOffsetX: { value: textureSettings.offsetX },
-    uTextureOffsetY: { value: textureSettings.offsetY },
+    uTextureZoom: { value: textureZoom },
+    uTextureOffsetX: { value: textureOffsetX },
+    uTextureOffsetY: { value: textureOffsetY },
     uTextureMap: { value: null as THREE.Texture | null },
     uHasTexture: { value: false },
     uTintColor: { value: new THREE.Vector3(1, 1, 1) },
@@ -264,10 +266,10 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
 
   // Mettre à jour les uniforms quand les settings changent
   useEffect(() => {
-    uniforms.uTextureZoom.value = textureSettings.zoom
-    uniforms.uTextureOffsetX.value = textureSettings.offsetX
-    uniforms.uTextureOffsetY.value = textureSettings.offsetY
-  }, [textureSettings, uniforms])
+    uniforms.uTextureZoom.value = textureZoom
+    uniforms.uTextureOffsetX.value = textureOffsetX
+    uniforms.uTextureOffsetY.value = textureOffsetY
+  }, [textureZoom, textureOffsetX, textureOffsetY, uniforms])
 
   // Mettre à jour la texture dans les uniforms
   useEffect(() => {

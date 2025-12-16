@@ -3,7 +3,16 @@
     "allow": [
       "Bash(npm view:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(search:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run start:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run start:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run start:*)"
     ],
     "deny": [],
     "ask": []

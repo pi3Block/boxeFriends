@@ -2,7 +2,8 @@ import { useRef, useMemo, useEffect, useCallback } from 'react'
 import { useFrame, ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
-import { useImpactStore, useTextureSettingsStore } from '../../../stores'
+import { useShallow } from 'zustand/react/shallow'
+import { useImpactStore, useGameStore } from '../../../stores'
 import { useCartoonEffectsStore } from '../../../stores/useCartoonEffectsStore'
 import { HitZone } from '../../../physics'
 
@@ -228,7 +229,9 @@ export function Cranium({ textureUrl, wobbleIntensity = 0, onHit }: CraniumProps
   const addImpact = useImpactStore((s) => s.addImpact)
   const impacts = useImpactStore((s) => s.impacts)
   const tick = useImpactStore((s) => s.tick)
-  const textureSettings = useTextureSettingsStore()
+  const textureSettings = useGameStore(
+    useShallow((s) => ({ zoom: s.textureZoom, offsetX: s.textureOffsetX, offsetY: s.textureOffsetY }))
+  )
   const processHit = useCartoonEffectsStore((s) => s.processHit)
 
   // Impacts locaux (en local space du mesh)

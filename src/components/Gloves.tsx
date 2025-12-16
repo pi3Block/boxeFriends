@@ -1,3 +1,24 @@
+/**
+ * @deprecated LEGACY - Ancienne implémentation des gants avec GSAP
+ *
+ * Ce fichier contient l'ancienne physique des gants basée sur GSAP et des
+ * animations tweenées. Il a été remplacé par SpringGloves.tsx qui utilise
+ * Ammo.js pour une physique plus réaliste avec ressorts (btGeneric6DofSpringConstraint).
+ *
+ * Conservé pour référence en cas de besoin de rollback ou pour récupérer
+ * des patterns d'animation.
+ *
+ * Fonctionnalités legacy:
+ * - Animation GSAP pour les coups (punch)
+ * - Suivi tactile avec smoothing
+ * - Effet de profondeur visuelle (scale basé sur Z)
+ * - Alternance automatique des mains (tactile)
+ * - Mode souris (deux gants suivent le curseur)
+ * - Mode caméra (suivi des mains MediaPipe)
+ *
+ * @see SpringGloves.tsx pour l'implémentation actuelle
+ * @see docs/ROADMAP.md Phase 1 pour le contexte de cette migration
+ */
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Sphere } from '@react-three/drei'
@@ -69,10 +90,10 @@ export interface GlovesHandle {
   returnToRest: () => void
   // Méthode souris: les deux gants suivent
   updateBothGloves: (screenX: number, screenY: number) => void
-  punchGlove: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  triggerMousePunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
   // Méthodes pour contrôle indépendant (mode caméra)
   updateHandPosition: (hand: 'left' | 'right', screenX: number, screenY: number) => void
-  triggerPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
+  cameraPunch: (hand: 'left' | 'right', screenX: number, screenY: number) => void
 }
 
 /**
@@ -463,7 +484,7 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
    * Le gant part de sa position de garde et revient après le punch
    * Note: Lit gameState directement du store pour éviter les problèmes de closure
    */
-  const punchGlove = (hand: 'left' | 'right', screenX: number, screenY: number) => {
+  const triggerMousePunch = (hand: 'left' | 'right', screenX: number, screenY: number) => {
     // Lire gameState frais du store (pas de la closure)
     const currentGameState = useGameStore.getState().gameState
     if (currentGameState !== 'FIGHTING') {
@@ -552,7 +573,7 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
    * Déclenche un coup pour une main spécifique (mode caméra)
    * Animation ultra-rapide pour ne pas désynchroniser le suivi
    */
-  const triggerPunch = (hand: 'left' | 'right', screenX: number, screenY: number) => {
+  const cameraPunch = (hand: 'left' | 'right', screenX: number, screenY: number) => {
     if (gameState !== 'FIGHTING') return
 
     const tracking = hand === 'left' ? leftHandTracking.current : rightHandTracking.current
@@ -613,10 +634,10 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
       returnToRest,
       // Méthodes souris (les deux gants suivent)
       updateBothGloves,
-      punchGlove,
+      triggerMousePunch,
       // Méthodes caméra (contrôle indépendant)
       updateHandPosition,
-      triggerPunch,
+      cameraPunch,
     }),
     [gameState, camera, size]
   )

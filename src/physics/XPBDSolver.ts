@@ -3,6 +3,7 @@ import {
   Particle,
   Constraint,
   DistanceConstraint,
+  PressureConstraint,
   XPBDConfig,
   DEFAULT_XPBD_CONFIG,
   ImpactData,
@@ -152,6 +153,9 @@ export class XPBDSolver {
         case 'distance':
           this.solveDistanceConstraint(constraint as DistanceConstraint, dt)
           break
+        case 'pressure':
+          this.solvePressureConstraint(constraint as PressureConstraint, dt)
+          break
         case 'volume':
           // TODO: Implémenter si nécessaire
           break
@@ -202,6 +206,102 @@ export class XPBDSolver {
     }
     if (p2.invMass > 0) {
       p2.position.addScaledVector(diff, lambda * p2.invMass)
+    }
+  }
+
+  /**
+   * Résoudre contrainte de pression (soft body gonflable style ammo.js)
+   *
+   * Algorithme inspiré de ammo.js kPR (pressure):
+   * 1. Calculer le volume actuel via tétraèdres signés
+   * 2. Calculer la différence avec le volume au repos
+   * 3. Pousser chaque vertex selon sa normale pondérée par la pression
+   */
+  private solvePressureConstraint(
+    constraint: PressureConstraint,
+    dt: number
+  ): void {
+    const { particleIds, triangles, pressure, restValue: restVolume, compliance } = constraint
+
+    // Récupérer toutes les particules
+    const particles: Particle[] = []
+    for (const id of particleIds) {
+      const p = this.particles.get(id)
+      if (p) particles.push(p)
+    }
+
+    if (particles.length < 4 || triangles.length === 0) return
+
+    // 1. Calculer le centre de masse
+    const center = new THREE.Vector3()
+    for (const p of particles) {
+      center.add(p.position)
+    }
+    center.divideScalar(particles.length)
+
+    // 2. Calculer le volume actuel (somme des tétraèdres signés)
+    let currentVolume = 0
+    const normals = new Map<number, THREE.Vector3>()
+
+    // Initialiser les normales à zéro
+    for (const p of particles) {
+      normals.set(p.id, new THREE.Vector3())
+    }
+
+    for (const [i0, i1, i2] of triangles) {
+      const p0 = particles[i0]
+      const p1 = particles[i1]
+      const p2 = particles[i2]
+
+      if (!p0 || !p1 || !p2) continue
+
+      // Vecteurs des arêtes
+      const v0 = this._tempVec1.subVectors(p0.position, center)
+      const v1 = new THREE.Vector3().subVectors(p1.position, center)
+      const v2 = new THREE.Vector3().subVectors(p2.position, center)
+
+      // Volume du tétraèdre = (1/6) * |v0 · (v1 × v2)|
+      const cross = new THREE.Vector3().crossVectors(v1, v2)
+      const tetVolume = v0.dot(cross) / 6
+
+      currentVolume += tetVolume
+
+      // Calculer la normale du triangle (aire-pondérée)
+      const edge1 = new THREE.Vector3().subVectors(p1.position, p0.position)
+      const edge2 = new THREE.Vector3().subVectors(p2.position, p0.position)
+      const faceNormal = new THREE.Vector3().crossVectors(edge1, edge2)
+
+      // Accumuler les normales pour chaque vertex du triangle
+      normals.get(p0.id)?.add(faceNormal)
+      normals.get(p1.id)?.add(faceNormal)
+      normals.get(p2.id)?.add(faceNormal)
+    }
+
+    // 3. Calculer la correction de pression
+    const volumeError = currentVolume - restVolume
+    const alpha = compliance / (dt * dt)
+
+    // Facteur de correction basé sur la pression et l'erreur de volume
+    // Pression positive = gonfle, négative = dégonfle
+    const pressureFactor = pressure * 0.001 // Normaliser la pression
+    const correction = (-volumeError / (restVolume + 0.001)) * pressureFactor
+
+    // 4. Appliquer la correction à chaque particule selon sa normale
+    for (const p of particles) {
+      if (p.invMass === 0) continue
+
+      const normal = normals.get(p.id)
+      if (!normal) continue
+
+      // Normaliser et appliquer
+      const len = normal.length()
+      if (len > 0.0001) {
+        normal.divideScalar(len)
+
+        // Correction XPBD avec compliance
+        const lambda = correction / (p.invMass + alpha)
+        p.position.addScaledVector(normal, lambda * p.invMass)
+      }
     }
   }
 

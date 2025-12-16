@@ -100,3 +100,4 @@ function MyComponent() {
 - Le code est écrit en anglais
 - Utilisez les hooks de React Three Fiber (`useFrame`, `useThree`, etc.) pour l'animation et l'interaction
 
+
