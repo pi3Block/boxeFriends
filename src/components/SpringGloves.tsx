@@ -349,13 +349,14 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
           addImpact([pos.x, pos.y, pos.z], impactForce)
 
           // Appliquer l'impulsion à TOUS les soft bodies du monde
+          // Forces réduites pour éviter les déformations excessives
           for (const sb of softBodies) {
             const forceVec = new THREE.Vector3(
-              velocity.x * 2,
-              velocity.y * 2,
-              velocity.z * 5
+              velocity.x * 1,
+              velocity.y * 1,
+              velocity.z * 2
             )
-            applySoftBodyImpulse(sb, pos, forceVec, 0.5)
+            applySoftBodyImpulse(sb, pos, forceVec, 0.4)
           }
 
           // Rebond du gant

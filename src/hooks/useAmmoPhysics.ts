@@ -344,15 +344,16 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
 
       // Configurer (comme dans l'exemple ammo.js)
       const sbConfig = softBody.get_m_cfg()
-      sbConfig.set_viterations(40)
-      sbConfig.set_piterations(40)
+      sbConfig.set_viterations(50) // Plus d'itérations pour stabilité
+      sbConfig.set_piterations(50)
       sbConfig.set_collisions(0x11)
-      sbConfig.set_kDF(0.1)
-      sbConfig.set_kDP(0.01) // Damping très faible!
+      sbConfig.set_kDF(0.2) // Friction légèrement plus haute
+      sbConfig.set_kDP(0.02) // Damping un peu plus haut pour réduire oscillations
       sbConfig.set_kPR(finalPressure) // Pression!
 
-      softBody.get_m_materials().at(0).set_m_kLST(0.9)
-      softBody.get_m_materials().at(0).set_m_kAST(0.9)
+      // Raideur maximale pour éviter l'inversion des faces
+      softBody.get_m_materials().at(0).set_m_kLST(1.0)
+      softBody.get_m_materials().at(0).set_m_kAST(1.0)
       softBody.setTotalMass(mass, false)
 
       const margin = 0.05

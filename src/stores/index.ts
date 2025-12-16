@@ -1,5 +1,5 @@
 export { useGameStore, DEFAULT_OPPONENT_TEXTURE, DEFAULT_TEXTURE_SETTINGS } from './useGameStore'
-export type { GameState, PunchType, TextureSettings } from './useGameStore'
+export type { GameState, PunchType, TextureSettings, CombatTool } from './useGameStore'
 
 export { useImpactStore } from './useImpactStore'
 export type { Impact } from './useImpactStore'

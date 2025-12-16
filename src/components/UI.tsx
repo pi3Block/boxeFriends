@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type ChangeEvent } from 'react'
 import { useGameStore, useHandTrackingStore } from '../stores'
 import { CharacterSelector } from './CharacterSelector'
 import { FaceCropper } from './FaceCropper'
+import { ToolBar } from './ToolBar'
 import { alignFace } from '../utils/FaceAligner'
 
 /**
@@ -254,6 +255,11 @@ export function UI() {
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* Barre d'outils (centre bas) */}
+          <div className="flex justify-center pb-4">
+            <ToolBar />
+          </div>
 
           {/* Barre de vie joueur (bottom) */}
           <div className="p-4">

@@ -11,6 +11,11 @@ export type GameState = 'LOBBY' | 'FIGHTING' | 'KO'
 export type PunchType = 'jab' | 'hook' | 'uppercut'
 
 /**
+ * Outil de combat sélectionné
+ */
+export type CombatTool = 'ball' | 'gloves'
+
+/**
  * Texture par défaut de l'adversaire
  */
 export const DEFAULT_OPPONENT_TEXTURE = '/textures/default.png'
@@ -53,6 +58,9 @@ interface GameStore {
   textureOffsetY: number
   textureEditMode: boolean
 
+  // Outil de combat sélectionné
+  selectedTool: CombatTool
+
   // Timestamp du dernier coup (pour reset combo)
   lastHitTime: number
 
@@ -73,6 +81,9 @@ interface GameStore {
   setTextureOffsetY: (y: number) => void
   setTextureSettings: (settings: Partial<TextureSettings>) => void
   resetTextureSettings: () => void
+
+  // Action outil
+  setSelectedTool: (tool: CombatTool) => void
 }
 
 // Délai avant reset du combo (ms)
@@ -100,6 +111,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   textureOffsetX: DEFAULT_TEXTURE_SETTINGS.offsetX,
   textureOffsetY: DEFAULT_TEXTURE_SETTINGS.offsetY,
   textureEditMode: false,
+
+  // Outil par défaut
+  selectedTool: 'gloves',
 
   // Définir la texture de l'adversaire (upload utilisateur)
   setTexture: (url: string) => {
@@ -232,4 +246,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     textureOffsetX: DEFAULT_TEXTURE_SETTINGS.offsetX,
     textureOffsetY: DEFAULT_TEXTURE_SETTINGS.offsetY,
   }),
+
+  // Action outil
+  setSelectedTool: (tool) => set({ selectedTool: tool }),
 }))

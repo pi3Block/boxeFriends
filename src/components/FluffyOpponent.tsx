@@ -3,29 +3,29 @@ import { useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useControls, folder } from 'leva'
-import { useAmmoPhysics, SoftBodyState } from '../hooks/useAmmoPhysics'
+import { useAmmoPhysics, SoftBodyState, COLLISION_GROUPS } from '../hooks/useAmmoPhysics'
 import { useImpactStore, useGameStore } from '../stores'
 
 /**
  * Configuration du sac de frappe
  */
 const BAG_CONFIG = {
-  // Géométrie
+  // Géométrie (comme l'exemple three.js)
   radius: 1.0,
   widthSegments: 40,
   heightSegments: 25,
 
-  // Physique soft body - pression élevée = ballon gonflé
-  mass: 15,
-  pressure: 150, // Pression haute pour garder forme sphérique
+  // Physique soft body - pression TRÈS élevée pour garder la forme
+  mass: 10,
+  pressure: 350, // Très haute pour éviter les déformations excessives
 
   // Ancrage
-  anchorHeight: 1.8,
-  anchorYThreshold: 0.9, // Seulement le pôle nord
+  anchorHeight: 2.0,
+  anchorYThreshold: 0.95,
 }
 
 /**
- * Sac de frappe simple - Soft body Ammo.js
+ * Sac de frappe - Soft body Ammo.js avec ancrage souple
  */
 export function FluffyOpponent() {
   const meshRef = useRef<THREE.Mesh>(null)
@@ -33,18 +33,21 @@ export function FluffyOpponent() {
   const initAttemptedRef = useRef(false)
   const lastImpactIdRef = useRef<number>(-1)
   const anchorNodeRef = useRef<number>(0)
+  const anchorRigidBodyRef = useRef<any>(null)
 
   const [isInitialized, setIsInitialized] = useState(false)
-  const [ropeEndPos, setRopeEndPos] = useState<[number, number, number]>([0, BAG_CONFIG.anchorHeight - BAG_CONFIG.radius, 0])
+  const [ropeEndPos, setRopeEndPos] = useState<[number, number, number]>([0, BAG_CONFIG.anchorHeight, 0])
 
   // Hook ammo.js
   const {
     isReady,
     ammo,
     createSoftVolume,
+    createRigidBody,
     updatePhysics,
     applySoftBodyImpulse,
     removeSoftBody,
+    removeRigidBody,
   } = useAmmoPhysics()
 
   // Stores
@@ -54,7 +57,7 @@ export function FluffyOpponent() {
   // Contrôles Leva
   const controls = useControls('Punching Bag', {
     physics: folder({
-      pressure: { value: BAG_CONFIG.pressure, min: 50, max: 300, step: 10 },
+      pressure: { value: BAG_CONFIG.pressure, min: 100, max: 400, step: 10 },
       mass: { value: BAG_CONFIG.mass, min: 5, max: 50, step: 5 },
     }, { collapsed: true }),
     appearance: folder({
@@ -72,7 +75,7 @@ export function FluffyOpponent() {
   }, [])
 
   /**
-   * Trouver les nodes à ancrer (haut de la sphère)
+   * Trouver les nodes à ancrer (pôle nord de la sphère)
    */
   const findAnchorNodes = useCallback((geo: THREE.BufferGeometry): number[] => {
     const positions = geo.attributes.position.array
@@ -95,25 +98,23 @@ export function FluffyOpponent() {
   }, [])
 
   /**
-   * Ancrer les nodes du haut
+   * Ancrer les nodes avec appendAnchor (ancrage souple)
    */
-  const anchorTopNodes = useCallback((
+  const anchorToRigidBody = useCallback((
     softBodyState: SoftBodyState,
     anchorNodes: number[],
-    anchorY: number
+    rigidBody: any
   ) => {
     if (!ammo) return
 
     const { softBody } = softBodyState
-    const nodes = softBody.get_m_nodes()
 
-    console.log(`[Bag] Anchoring ${anchorNodes.length} nodes at Y=${anchorY}`)
+    console.log(`[Bag] Soft-anchoring ${anchorNodes.length} nodes to rigid body`)
 
+    // appendAnchor(nodeIndex, rigidBody, disableCollision, influence)
+    // influence = 1.0 = fully attached
     for (const nodeIdx of anchorNodes) {
-      const node = nodes.at(nodeIdx)
-      node.set_m_im(0) // Masse inverse = 0 = fixé
-      const pos = node.get_m_x()
-      pos.setY(anchorY)
+      softBody.appendAnchor(nodeIdx, rigidBody, true, 1.0)
     }
   }, [ammo])
 
@@ -122,8 +123,27 @@ export function FluffyOpponent() {
     if (!isReady || !meshRef.current || initAttemptedRef.current) return
     initAttemptedRef.current = true
 
-    console.log('[Bag] Creating punching bag...')
+    console.log('[Bag] Creating punching bag with soft anchor...')
 
+    // 1. Créer un rigid body statique au plafond (point d'ancrage)
+    const anchorBody = createRigidBody({
+      id: 'bag-anchor',
+      shape: 'sphere',
+      size: 0.1,
+      position: new THREE.Vector3(0, BAG_CONFIG.anchorHeight, 0),
+      mass: 0, // Statique
+      collisionGroup: COLLISION_GROUPS.STATIC,
+      collisionMask: 0, // Ne collisionne avec rien
+    })
+
+    if (!anchorBody) {
+      console.error('[Bag] Failed to create anchor rigid body')
+      return
+    }
+
+    anchorRigidBodyRef.current = anchorBody.rigidBody
+
+    // 2. Cloner et préparer la géométrie
     const clonedGeometry = geometry.clone()
     if (!clonedGeometry.index) {
       console.error('[Bag] Geometry must have indices')
@@ -132,15 +152,15 @@ export function FluffyOpponent() {
 
     // Trouver les anchor nodes AVANT translation
     const anchorNodes = findAnchorNodes(clonedGeometry)
-    console.log('[Bag] Anchor nodes:', anchorNodes.length)
+    console.log('[Bag] Anchor nodes found:', anchorNodes.length)
 
-    // Translater la géométrie
+    // Translater la géométrie pour que le haut soit au niveau de l'ancrage
     const hangPosition = BAG_CONFIG.anchorHeight - BAG_CONFIG.radius
     clonedGeometry.translate(0, hangPosition, 0)
 
     meshRef.current.geometry = clonedGeometry
 
-    // Créer le soft body
+    // 3. Créer le soft body
     const state = createSoftVolume(clonedGeometry, meshRef.current, {
       mass: controls.mass,
       pressure: controls.pressure,
@@ -149,9 +169,12 @@ export function FluffyOpponent() {
 
     if (state) {
       softBodyStateRef.current = state
-      anchorTopNodes(state, anchorNodes, BAG_CONFIG.anchorHeight)
+
+      // 4. Ancrer les nodes du haut au rigid body (ancrage souple)
+      anchorToRigidBody(state, anchorNodes, anchorBody.rigidBody)
+
       setIsInitialized(true)
-      console.log('[Bag] Ready!')
+      console.log('[Bag] Ready with soft anchor!')
     }
 
     return () => {
@@ -159,10 +182,12 @@ export function FluffyOpponent() {
         removeSoftBody(softBodyStateRef.current)
         softBodyStateRef.current = null
       }
+      removeRigidBody('bag-anchor')
+      anchorRigidBodyRef.current = null
       initAttemptedRef.current = false
       setIsInitialized(false)
     }
-  }, [isReady, geometry, createSoftVolume, removeSoftBody, findAnchorNodes, anchorTopNodes, controls.mass, controls.pressure])
+  }, [isReady, geometry, createSoftVolume, createRigidBody, removeSoftBody, removeRigidBody, findAnchorNodes, anchorToRigidBody, controls.mass, controls.pressure])
 
   // Traiter les impacts
   useEffect(() => {
@@ -175,17 +200,19 @@ export function FluffyOpponent() {
 
     const hitPosition = new THREE.Vector3(
       latest.hitPoint[0] * BAG_CONFIG.radius,
-      latest.hitPoint[1] * BAG_CONFIG.radius,
+      latest.hitPoint[1] * BAG_CONFIG.radius + BAG_CONFIG.anchorHeight - BAG_CONFIG.radius,
       latest.hitPoint[2] * BAG_CONFIG.radius
     )
 
+    // Force réduite pour éviter les déformations excessives
     const force = new THREE.Vector3(
-      -latest.hitPoint[0] * 8,
-      Math.abs(latest.hitPoint[1]) * 4 + 3,
-      -latest.strength * 25
+      -latest.hitPoint[0] * 5,
+      0,
+      -latest.strength * 15
     )
 
-    const radius = 0.8 + latest.strength * 0.6
+    // Rayon d'impact plus petit pour une déformation plus localisée
+    const radius = 0.3 + latest.strength * 0.3
 
     applySoftBodyImpulse(softBodyStateRef.current, hitPosition, force, radius)
   }, [impacts, applySoftBodyImpulse])
@@ -200,7 +227,7 @@ export function FluffyOpponent() {
     const positions = meshRef.current.geometry.attributes.position.array
     const anchorIdx = anchorNodeRef.current * 3
     const newX = positions[anchorIdx] ?? 0
-    const newY = positions[anchorIdx + 1] ?? BAG_CONFIG.anchorHeight - BAG_CONFIG.radius
+    const newY = positions[anchorIdx + 1] ?? BAG_CONFIG.anchorHeight
     const newZ = positions[anchorIdx + 2] ?? 0
     setRopeEndPos([newX, newY, newZ])
   })
@@ -214,7 +241,7 @@ export function FluffyOpponent() {
 
   // Points de la corde
   const ropePoints: [number, number, number][] = useMemo(() => [
-    [0, BAG_CONFIG.anchorHeight + 0.5, 0],
+    [0, BAG_CONFIG.anchorHeight + 0.3, 0],
     ropeEndPos,
   ], [ropeEndPos])
 
@@ -233,17 +260,19 @@ export function FluffyOpponent() {
       <Line points={ropePoints} color="#8B4513" lineWidth={4} />
 
       {/* Point d'ancrage */}
-      <mesh position={[0, BAG_CONFIG.anchorHeight + 0.5, 0]}>
-        <sphereGeometry args={[0.15, 12, 12]} />
-        <meshStandardMaterial color="#444444" metalness={0.8} roughness={0.3} />
+      <mesh position={[0, BAG_CONFIG.anchorHeight + 0.3, 0]}>
+        <sphereGeometry args={[0.12, 12, 12]} />
+        <meshStandardMaterial color="#333333" metalness={0.9} roughness={0.2} />
       </mesh>
 
       {/* Sac de frappe */}
       <mesh ref={meshRef} geometry={geometry} frustumCulled={false}>
-        <meshPhongMaterial
+        <meshStandardMaterial
           color={bagColor}
           side={THREE.DoubleSide}
-          shininess={30}
+          roughness={0.6}
+          metalness={0.0}
+          flatShading={true}
         />
       </mesh>
     </group>
