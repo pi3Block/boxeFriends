@@ -1,9 +1,15 @@
 import { useCallback, useRef, useState, type ChangeEvent } from 'react'
 import { useGameStore, useHandTrackingStore } from '../stores'
-import { CharacterSelector } from './CharacterSelector'
 import { FaceCropper } from './FaceCropper'
-import { ToolBar } from './ToolBar'
+import { PunchButtons } from './PunchButtons'
+import { SettingsPanel } from './SettingsPanel'
 import { alignFace } from '../utils/FaceAligner'
+
+// Legacy imports - kept for documentation
+// import { CharacterSelector } from './CharacterSelector'
+// import { ToolBar } from './ToolBar'
+// import { PunchZoneIndicator } from './PunchZoneIndicator'
+// import { OpponentSelector } from './OpponentSelector'
 
 /**
  * Composant UI overlay (HTML au-dessus du Canvas)
@@ -134,77 +140,91 @@ export function UI() {
         className="hidden"
       />
 
-      {/* LOBBY */}
+      {/* LOBBY - Modern Mobile-First Design */}
       {gameState === 'LOBBY' && (
-        <div className="pointer-events-auto flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto bg-black/50 py-8">
-          <h1 className="text-4xl font-bold text-white">FACE PUNCHER</h1>
-
-          {/* Sélecteur de personnage */}
-          <CharacterSelector />
-
-          {/* Preview de la photo */}
-          <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white">
-            <img
-              src={opponentTexture}
-              alt="Opponent"
-              className="h-full w-full object-cover"
-            />
+        <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-8 bg-black/90 px-6 py-8">
+          {/* Header */}
+          <div className="flex flex-col items-center gap-2">
+            <h1 className="bg-gradient-to-r from-red-500 via-orange-400 to-yellow-400 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-5xl">
+              FACE PUNCHER
+            </h1>
+            <p className="text-sm text-gray-400">Tape sur la tête de quelqu'un</p>
           </div>
 
-          {/* Bouton upload */}
+          {/* Photo Section - Central Focus */}
+          <div className="flex flex-col items-center gap-4">
+            {/* Photo Preview - Interactive */}
+            <button
+              onClick={handleUploadClick}
+              disabled={isProcessing}
+              className="group relative"
+            >
+              <div className={`h-32 w-32 overflow-hidden rounded-full border-4 transition-all duration-300 sm:h-40 sm:w-40 ${
+                isProcessing
+                  ? 'animate-pulse border-gray-500'
+                  : 'border-white/80 group-hover:border-white group-hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]'
+              }`}>
+                <img
+                  src={opponentTexture}
+                  alt="Opponent"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                />
+              </div>
+              {/* Overlay on hover/tap */}
+              {!isProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 group-active:opacity-100">
+                  <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+              )}
+              {/* Processing indicator */}
+              {isProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-6 w-6 animate-spin rounded-full border-3 border-white/30 border-t-white" />
+                    <span className="text-xs text-white">{processingStatus}</span>
+                  </div>
+                </div>
+              )}
+            </button>
+
+            {/* Upload hint */}
+            <p className="text-center text-sm text-gray-400">
+              {isCustomTexture ? 'Touche pour changer' : 'Ajoute un visage'}
+            </p>
+          </div>
+
+          {/* Camera Toggle - Compact */}
           <button
-            onClick={handleUploadClick}
-            disabled={isProcessing}
-            className={`rounded-lg px-6 py-3 font-bold text-white transition ${
-              isProcessing
-                ? 'cursor-wait bg-gray-500'
-                : 'bg-blue-600 hover:bg-blue-700'
+            onClick={() => setCameraEnabled(!isCameraEnabled)}
+            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all ${
+              isCameraEnabled
+                ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/50'
+                : 'bg-white/10 text-gray-400 ring-1 ring-white/20 active:bg-white/20'
             }`}
           >
-            {isProcessing
-              ? processingStatus || 'Traitement...'
-              : isCustomTexture
-                ? 'Changer la photo'
-                : 'Choisir une photo (visage)'}
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+            </svg>
+            {isCameraEnabled ? 'Gestes ON' : 'Gestes OFF'}
           </button>
 
-          {/* Info sur le processus */}
-          <p className="text-xs text-gray-300">
-            Recadrez le visage, puis alignement automatique
-          </p>
-
-          {/* Toggle caméra pour hand tracking */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setCameraEnabled(!isCameraEnabled)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 font-bold transition ${
-                isCameraEnabled
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-              }`}
-            >
-              {/* Icône caméra */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-              </svg>
-              {isCameraEnabled ? 'Caméra ON' : 'Caméra OFF'}
-            </button>
-            <span className="text-xs text-gray-400">
-              Contrôle par gestes
-            </span>
-          </div>
-
-          {/* Bouton start */}
+          {/* Fight Button - Large and Prominent */}
           <button
             onClick={startFight}
-            className="rounded-lg bg-red-600 px-8 py-4 text-xl font-bold text-white transition hover:bg-red-700"
+            className="group relative w-full max-w-xs overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-red-500 to-orange-500 py-4 text-xl font-black uppercase tracking-wider text-white shadow-lg shadow-red-500/30 transition-all duration-300 active:scale-95 sm:py-5 sm:text-2xl"
           >
-            FIGHT!
+            {/* Shine effect */}
+            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+            <span className="relative flex items-center justify-center gap-3">
+              {/* Boxing glove icon */}
+              <svg className="h-7 w-7 sm:h-8 sm:w-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M19 12c0-3.31-2.69-6-6-6h-2c-3.31 0-6 2.69-6 6v4c0 1.1.9 2 2 2h2v2c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-2h2c1.1 0 2-.9 2-2v-4zm-6-4c2.21 0 4 1.79 4 4v2h-8v-2c0-2.21 1.79-4 4-4z"/>
+              </svg>
+              FIGHT!
+            </span>
           </button>
         </div>
       )}
@@ -214,7 +234,7 @@ export function UI() {
         <>
           {/* Indicateur de tracking caméra + recalibrer (coin supérieur droit) */}
           {isCameraEnabled && (
-            <div className="absolute right-4 top-4 flex items-center gap-2">
+            <div className="pointer-events-auto absolute right-4 top-16 flex items-center gap-2">
               {/* Bouton recalibrer */}
               {isCalibrated && (
                 <button
@@ -244,7 +264,7 @@ export function UI() {
               <div className="mb-1 text-center text-sm font-bold text-white drop-shadow-lg">
                 ADVERSAIRE
               </div>
-              <div className="h-6 w-full overflow-hidden rounded-full bg-gray-800">
+              <div className="h-6 w-full overflow-hidden rounded-full bg-gray-800/80 backdrop-blur-sm">
                 <div
                   className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-200"
                   style={{ width: `${opponentHp}%` }}
@@ -256,15 +276,15 @@ export function UI() {
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Barre d'outils (centre bas) */}
-          <div className="flex justify-center pb-4">
-            <ToolBar />
+          {/* Boutons de punch centrés */}
+          <div className="mb-4">
+            <PunchButtons />
           </div>
 
           {/* Barre de vie joueur (bottom) */}
-          <div className="p-4">
+          <div className="p-4 pb-6">
             <div className="mx-auto w-full max-w-md">
-              <div className="h-4 w-full overflow-hidden rounded-full bg-gray-800">
+              <div className="h-4 w-full overflow-hidden rounded-full bg-gray-800/80 backdrop-blur-sm">
                 <div
                   className="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-200"
                   style={{ width: `${playerHp}%` }}
@@ -275,29 +295,56 @@ export function UI() {
               </div>
             </div>
           </div>
+
+          {/* Panneau de paramètres (bas droite) */}
+          <SettingsPanel />
         </>
       )}
 
-      {/* KO */}
+      {/* KO - Modern Victory/Defeat Screen */}
       {gameState === 'KO' && (
-        <div className="pointer-events-auto flex flex-1 flex-col items-center justify-center gap-6 bg-black/70">
-          <h1 className="animate-bounce text-6xl font-black text-red-500">
-            K.O.!
-          </h1>
+        <div className="pointer-events-auto flex flex-1 flex-col items-center justify-center gap-8 bg-gradient-to-b from-black/90 via-black/80 to-black/90 px-6">
+          {/* KO Text with animation */}
+          <div className="relative">
+            <h1 className="animate-pulse bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-7xl font-black text-transparent sm:text-8xl">
+              K.O.!
+            </h1>
+            {/* Glow effect */}
+            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 opacity-30 blur-2xl" />
+          </div>
 
+          {/* Result */}
           {opponentHp <= 0 && (
-            <p className="text-2xl font-bold text-green-400">VICTOIRE!</p>
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-3xl font-black uppercase tracking-wider text-green-400 sm:text-4xl">
+                Victoire!
+              </p>
+              <p className="text-gray-400">Tu l'as bien tapé!</p>
+            </div>
           )}
 
           {playerHp <= 0 && (
-            <p className="text-2xl font-bold text-red-400">DÉFAITE...</p>
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-3xl font-black uppercase tracking-wider text-red-400 sm:text-4xl">
+                Défaite...
+              </p>
+              <p className="text-gray-400">Réessaie!</p>
+            </div>
           )}
 
+          {/* Replay Button */}
           <button
             onClick={resetGame}
-            className="rounded-lg bg-blue-600 px-8 py-4 text-xl font-bold text-white transition hover:bg-blue-700"
+            className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 px-10 py-4 text-xl font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-500/30 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/40 active:scale-95"
           >
-            REJOUER
+            {/* Shine effect */}
+            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+            <span className="relative flex items-center gap-2">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Rejouer
+            </span>
           </button>
         </div>
       )}

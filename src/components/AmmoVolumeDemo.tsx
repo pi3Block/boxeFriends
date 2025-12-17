@@ -1,8 +1,10 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useCharacterStore } from '../stores/useCharacterStore'
-import { useGameStore } from '../stores'
+import { useGameStore, useImpactStore } from '../stores'
+import { ImpactEffects } from './ImpactEffects'
+import { MultiPartOpponent } from './MultiPartOpponent'
 
 /**
  * Salle de boxe avec soft body suspendu
@@ -30,8 +32,14 @@ interface PunchAnimation {
 }
 
 /**
+ * Position Z cible de l'adversaire (centré, proche du joueur)
+ */
+const TARGET_Z = 1.5
+
+/**
  * Configuration des trajectoires de coups
  * Chaque coup a des positions clés en coordonnées relatives
+ * Les trajectoires ciblent maintenant z=TARGET_Z (adversaire centré)
  */
 const PUNCH_CONFIGS = {
   jab: {
@@ -47,26 +55,28 @@ const PUNCH_CONFIGS = {
         const windupT = t / 0.2
         return new THREE.Vector3(
           sideMultiplier * 0.8 + windupT * 0.1 * sideMultiplier,
-          2.5,
+          3.2,
           4 + windupT * 0.3
         )
       } else if (t < 0.6) {
-        // Strike - vers l'avant
+        // Strike - vers l'avant jusqu'à TARGET_Z
         const strikeT = (t - 0.2) / 0.4
         const easeOut = 1 - Math.pow(1 - strikeT, 3)
+        const startZ = 4.3
+        const endZ = TARGET_Z
         return new THREE.Vector3(
-          sideMultiplier * 0.6,
-          2.5 + Math.sin(strikeT * Math.PI) * 0.1,
-          4.3 - easeOut * 4.3
+          sideMultiplier * (0.6 - easeOut * 0.4),  // Converge vers le centre
+          3.2 + Math.sin(strikeT * Math.PI) * 0.2,
+          startZ - easeOut * (startZ - endZ)
         )
       } else {
         // Return - retour position initiale
         const returnT = (t - 0.6) / 0.4
         const easeIn = returnT * returnT
         return new THREE.Vector3(
-          sideMultiplier * (0.6 + easeIn * 0.2),
-          2.5,
-          0 + easeIn * 4
+          sideMultiplier * (0.2 + easeIn * 0.6),
+          3.2,
+          TARGET_Z + easeIn * (4 - TARGET_Z)
         )
       }
     }
@@ -84,18 +94,20 @@ const PUNCH_CONFIGS = {
         const windupT = t / 0.25
         return new THREE.Vector3(
           sideMultiplier * (0.8 + windupT * 0.8),
-          2.8 + windupT * 0.3,
+          3.8 + windupT * 0.3,
           4 + windupT * 0.2
         )
       } else if (t < 0.65) {
-        // Strike - arc latéral vers le centre
+        // Strike - arc latéral vers le centre puis frappe
         const strikeT = (t - 0.25) / 0.4
         const easeOut = 1 - Math.pow(1 - strikeT, 2)
         const arcAngle = (1 - easeOut) * Math.PI * 0.4
+        const startZ = 4.2
+        const endZ = TARGET_Z
         return new THREE.Vector3(
           sideMultiplier * (1.6 - easeOut * 1.8) * Math.cos(arcAngle),
-          3.1 - easeOut * 0.6,
-          4.2 - easeOut * 3.7 + Math.sin(arcAngle) * 0.5
+          4.1 - easeOut * 0.6,
+          startZ - easeOut * (startZ - endZ) + Math.sin(arcAngle) * 0.3
         )
       } else {
         // Return
@@ -103,8 +115,8 @@ const PUNCH_CONFIGS = {
         const easeIn = returnT * returnT
         return new THREE.Vector3(
           sideMultiplier * (-0.2 + easeIn * 1.0),
-          2.5,
-          0.5 + easeIn * 3.5
+          3.5,
+          TARGET_Z + 0.3 + easeIn * (4 - TARGET_Z - 0.3)
         )
       }
     }
@@ -127,22 +139,24 @@ const PUNCH_CONFIGS = {
           4 + windupT * 0.3
         )
       } else if (t < 0.65) {
-        // Strike - remontée explosive
+        // Strike - remontée explosive vers TARGET_Z
         const strikeT = (t - 0.3) / 0.35
         const easeOut = 1 - Math.pow(1 - strikeT, 3)
+        const startZ = 4.3
+        const endZ = TARGET_Z
         return new THREE.Vector3(
-          sideMultiplier * 0.5,
+          sideMultiplier * (0.5 - easeOut * 0.3),  // Converge vers le centre
           1.5 + easeOut * 2.5,
-          4.3 - easeOut * 3.8
+          startZ - easeOut * (startZ - endZ)
         )
       } else {
         // Return
         const returnT = (t - 0.65) / 0.35
         const easeIn = returnT * returnT
         return new THREE.Vector3(
-          sideMultiplier * (0.5 + easeIn * 0.3),
+          sideMultiplier * (0.2 + easeIn * 0.6),
           4.0 - easeIn * 1.5,
-          0.5 + easeIn * 3.5
+          TARGET_Z + 0.3 + easeIn * (4 - TARGET_Z - 0.3)
         )
       }
     }
@@ -352,9 +366,9 @@ function createSoftVolume(Ammo: any, mesh: THREE.Mesh, geometry: THREE.BufferGeo
   )
 
   const sbConfig = softBody.get_m_cfg()
-  // Augmenter les itérations pour de meilleures collisions
-  sbConfig.set_viterations(80)
-  sbConfig.set_piterations(80)
+  // Itérations optimisées (équilibre performance/qualité)
+  sbConfig.set_viterations(25)
+  sbConfig.set_piterations(25)
   // Collisions: 0x11 = SDF_RS (Soft-Rigid) + VF_SS (Vertex-Face Soft-Soft)
   // Utiliser 0x0011 pour collision rigid-soft + cluster collision
   sbConfig.set_collisions(0x0011)
@@ -369,6 +383,10 @@ function createSoftVolume(Ammo: any, mesh: THREE.Mesh, geometry: THREE.BufferGeo
   sbConfig.set_kKHR(1.0) // Kinetic contact hardness
   sbConfig.set_kSHR(1.0) // Soft contact hardness
 
+  // Pose matching natif Bullet - garde le soft body proche de sa forme/position initiale
+  // kMT: coefficient de pose matching (0 = désactivé, 1 = rigide)
+  sbConfig.set_kMT(0.5) // Force moyenne de retour à la pose initiale
+
   softBody.get_m_materials().at(0).set_m_kLST(0.95)
   softBody.get_m_materials().at(0).set_m_kAST(0.95)
   softBody.setTotalMass(mass, false)
@@ -379,6 +397,17 @@ function createSoftVolume(Ammo: any, mesh: THREE.Mesh, geometry: THREE.BufferGeo
   mesh.userData.physicsBody = softBody
   softBody.setActivationState(4)
   softBodiesList.push({ mesh, body: softBody, indexAssociation })
+
+  // Réinitialiser toutes les vélocités à zéro pour éviter mouvement initial
+  const allNodes = softBody.get_m_nodes()
+  const totalNodes = allNodes.size()
+  for (let i = 0; i < totalNodes; i++) {
+    const node = allNodes.at(i)
+    const vel = node.get_m_v()
+    vel.setX(0)
+    vel.setY(0)
+    vel.setZ(0)
+  }
 
   // Trouver le node le plus haut
   const nodes = softBody.get_m_nodes()
@@ -441,13 +470,14 @@ function attachRopeToVolume(Ammo: any, ropeSoftBody: any, ropeNumSegments: numbe
   ropeSoftBody.appendAnchor(0, ceilingBody, true, 1.0)
   const ropeNodes = ropeSoftBody.get_m_nodes()
   ropeNodes.at(ropeNumSegments).set_m_im(0)
+  // Fixer uniquement le node du sommet (ancrage minimal)
   volumeSoftBody.get_m_nodes().at(volumeTopNode).set_m_im(0)
 }
 
 function updatePhysics(deltaTime: number): void {
   if (!physicsWorld) return
 
-  physicsWorld.stepSimulation(deltaTime, 10)
+  physicsWorld.stepSimulation(deltaTime, 5)  // Réduit de 10 à 5 pour perf
 
   // Soft bodies volumes
   for (const { mesh, body, indexAssociation } of softBodiesList) {
@@ -524,16 +554,45 @@ export function AmmoVolumeDemo() {
   const mouseCoordsRef = useRef(new THREE.Vector2())
   const raycasterRef = useRef(new THREE.Raycaster())
 
-  // Personnage sélectionné
+  // Personnage sélectionné (non utilisé pour soft bodies maintenant)
   const selectedCharacterId = useCharacterStore((state) => state.selectedCharacterId)
-  const showFluffyBags = selectedCharacterId === 'fluffy'
+  // DÉSACTIVÉ: Le système Fluffy créait 2 soft bodies = OOM
+  // const showFluffyBags = selectedCharacterId === 'fluffy'
+  const showFluffyBags = false  // Toujours false pour éviter OOM
 
   // Outil sélectionné
   const selectedTool = useGameStore((state) => state.selectedTool)
 
+  // Punch en attente (déclenché par UI)
+  const queuedPunch = useGameStore((state) => state.queuedPunch)
+  const consumeQueuedPunch = useGameStore((state) => state.consumeQueuedPunch)
+
+  // Type d'adversaire sélectionné (utilisé à la place de Fluffy)
+  const selectedOpponent = useGameStore((state) => state.selectedOpponent)
+
+  // Texture de l'adversaire (depuis le store ou default)
+  const opponentTextureUrl = useGameStore((state) => state.opponentTexture)
+
+  // Charger la texture de l'adversaire
+  const opponentTexture = useMemo(() => {
+    if (!opponentTextureUrl) return null
+    const loader = new THREE.TextureLoader()
+    const texture = loader.load(opponentTextureUrl)
+    // Configuration pour sphère/ballon
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    texture.repeat.set(1, 1)
+    // Décaler la texture vers la gauche pour centrer le visage
+    texture.offset.x = 0.25
+    texture.colorSpace = THREE.SRGBColorSpace
+    return texture
+  }, [opponentTextureUrl])
+
   // Références meshes
   const groundRef = useRef<THREE.Mesh>(null)
   const ceilingRef = useRef<THREE.Mesh>(null)
+  const opponentRef = useRef<THREE.Mesh>(null)
+  // Legacy refs (gardés pour compatibilité mais plus utilisés)
   const punchingBagRef = useRef<THREE.Mesh>(null)
   const boxBagRef = useRef<THREE.Mesh>(null)
 
@@ -549,9 +608,18 @@ export function AmmoVolumeDemo() {
   const [rightPunchAnim, setRightPunchAnim] = useState<PunchAnimation | null>(null)
   const [currentPunchType, setCurrentPunchType] = useState<PunchType>('jab')
 
-  // Positions de repos des gants
-  const LEFT_REST_POS = new THREE.Vector3(-0.8, 2.5, 4)
-  const RIGHT_REST_POS = new THREE.Vector3(0.8, 2.5, 4)
+  // Positions de repos des gants (légèrement plus hautes pour correspondre aux trajectoires)
+  const LEFT_REST_POS = new THREE.Vector3(-0.8, 3.0, 4)
+  const RIGHT_REST_POS = new THREE.Vector3(0.8, 3.0, 4)
+
+  // Système d'effets d'impact
+  const addImpact = useImpactStore((state) => state.addImpact)
+  const leftImpactTriggeredRef = useRef(false)
+  const rightImpactTriggeredRef = useRef(false)
+
+  // Position cible de l'adversaire pour détection d'impact
+  const OPPONENT_CENTER = new THREE.Vector3(0, 3.5, TARGET_Z)
+  const IMPACT_THRESHOLD = 1.8  // Distance pour déclencher l'impact
 
   // Init Ammo
   useEffect(() => {
@@ -591,7 +659,120 @@ export function AmmoVolumeDemo() {
     console.log('[BoxingGym] Base scene initialized (floor, ceiling)')
   }, [isReady])
 
-  // Créer les sacs de frappe Fluffy (soft bodies) seulement si sélectionné
+  // Ref pour le type d'adversaire actuellement créé
+  const currentOpponentTypeRef = useRef<string | null>(null)
+
+  // Créer l'adversaire soft body centré (basé sur selectedOpponent)
+  useEffect(() => {
+    if (!isReady || !ammoRef.current) return
+    if (!ceilingRef.current || !opponentRef.current) return
+
+    // Si le type n'a pas changé, ne rien faire
+    if (currentOpponentTypeRef.current === selectedOpponent) return
+
+    const Ammo = ammoRef.current
+    const ceilingBody = ceilingRef.current.userData.physicsBody
+
+    // Position centrée, plus proche du joueur
+    const OPPONENT_Z = 1.5  // Position Z proche de la caméra
+    const OPPONENT_Y = 3.5  // Hauteur du sac
+
+    // Supprimer l'ancien soft body si existant
+    if (opponentRef.current.userData.physicsBody) {
+      const oldBody = opponentRef.current.userData.physicsBody
+      physicsWorld.removeSoftBody(oldBody)
+      // Supprimer aussi des listes
+      const idx = softBodiesList.findIndex(s => s.body === oldBody)
+      if (idx !== -1) softBodiesList.splice(idx, 1)
+      opponentRef.current.userData.physicsBody = null
+    }
+
+    // Pour 'multipart', on utilise le composant MultiPartOpponent séparé
+    if (selectedOpponent === 'multipart') {
+      currentOpponentTypeRef.current = selectedOpponent
+      console.log('[BoxingGym] Multipart selected - using separate component')
+      return
+    }
+
+    let geometry: THREE.BufferGeometry
+    let mass: number
+    let pressure: number
+    let ropeStartY: number
+
+    if (selectedOpponent === 'sphere') {
+      // Sac sphérique centré - résolution réduite pour performance (20×12 vs 40×25)
+      const radius = 1.2
+      geometry = new THREE.SphereGeometry(radius, 20, 12)
+      geometry.translate(0, OPPONENT_Y, OPPONENT_Z)
+      mass = 25
+      pressure = 800
+      ropeStartY = OPPONENT_Y + radius + 0.2
+    } else if (selectedOpponent === 'box') {
+      // Sac rectangulaire centré - résolution réduite (3×10×3 vs 4×16×4)
+      geometry = new THREE.BoxGeometry(1, 4, 1, 3, 10, 3)
+      geometry.translate(0, OPPONENT_Y, OPPONENT_Z)
+      mass = 30
+      pressure = 500
+      ropeStartY = OPPONENT_Y + 2.0  // Moitié de la hauteur + marge
+    } else if (selectedOpponent === 'fluffy') {
+      // Fluffy - sphère plus grande et plus molle
+      const radius = 1.5
+      geometry = new THREE.SphereGeometry(radius, 24, 16)
+      geometry.translate(0, OPPONENT_Y, OPPONENT_Z)
+      mass = 20
+      pressure = 400  // Plus mou
+      ropeStartY = OPPONENT_Y + radius + 0.2
+    } else if (selectedOpponent === 'littlemac') {
+      // Little Mac - ellipsoïde (tête ovale)
+      // Utilise une sphère écrasée pour forme de tête
+      const radiusX = 0.9
+      const radiusY = 1.1  // Plus haut que large (tête)
+      const radiusZ = 0.85
+      geometry = new THREE.SphereGeometry(1, 24, 18)
+      // Déformer en ellipsoïde
+      const positions = geometry.attributes.position!.array as Float32Array
+      for (let i = 0; i < positions.length; i += 3) {
+        positions[i] *= radiusX      // X
+        positions[i + 1] *= radiusY  // Y
+        positions[i + 2] *= radiusZ  // Z
+      }
+      geometry.attributes.position!.needsUpdate = true
+      geometry.computeVertexNormals()
+      geometry.translate(0, OPPONENT_Y, OPPONENT_Z)
+      mass = 12
+      pressure = 350  // Pression moyenne pour déformation visible
+      ropeStartY = OPPONENT_Y + radiusY + 0.2
+    } else {
+      // Défaut: sphère
+      const radius = 1.2
+      geometry = new THREE.SphereGeometry(radius, 20, 12)
+      geometry.translate(0, OPPONENT_Y, OPPONENT_Z)
+      mass = 25
+      pressure = 800
+      ropeStartY = OPPONENT_Y + radius + 0.2
+    }
+
+    opponentRef.current.geometry = geometry
+
+    // Créer le soft body
+    const { softBody, topNodeIndex } = createSoftVolume(Ammo, opponentRef.current, geometry, mass, pressure)
+
+    // Créer la corde
+    const rope = createRope(
+      Ammo,
+      scene,
+      new THREE.Vector3(0, ROOM.height, OPPONENT_Z),
+      new THREE.Vector3(0, ropeStartY, OPPONENT_Z),
+      12,
+      0.5
+    )
+    attachRopeToVolume(Ammo, rope.body, 12, ceilingBody, softBody, topNodeIndex)
+
+    currentOpponentTypeRef.current = selectedOpponent
+    console.log(`[BoxingGym] Opponent created: ${selectedOpponent} at z=${OPPONENT_Z}`)
+  }, [isReady, selectedOpponent, scene])
+
+  // Legacy: Créer les sacs de frappe Fluffy (gardé pour compatibilité avec CharacterSelector)
   useEffect(() => {
     if (!isReady || !ammoRef.current || !showFluffyBags) return
     if (!punchingBagRef.current || !boxBagRef.current || !ceilingRef.current) return
@@ -605,7 +786,7 @@ export function AmmoVolumeDemo() {
 
     // Sac de frappe sphérique - pression très élevée pour effet ballon gonflé
     const bagRadius = 1.2
-    const bagGeo = new THREE.SphereGeometry(bagRadius, 40, 25)
+    const bagGeo = new THREE.SphereGeometry(bagRadius, 20, 12)  // Résolution réduite
     bagGeo.translate(-2.5, 4, 0)
     punchingBagRef.current.geometry = bagGeo
     // Pression 800 = très gonflé, comme un ballon de plage
@@ -616,7 +797,7 @@ export function AmmoVolumeDemo() {
     attachRopeToVolume(Ammo, sphereRope.body, 12, ceilingBody, bagSoftBody, bagTopNode)
 
     // Sac de frappe rectangulaire - pression élevée aussi
-    const boxGeo = new THREE.BoxGeometry(1, 4, 1, 4, 16, 4)
+    const boxGeo = new THREE.BoxGeometry(1, 4, 1, 3, 10, 3)  // Résolution réduite
     boxGeo.translate(2.5, 4, 0)
     boxBagRef.current.geometry = boxGeo
     // Pression 500 = gonflé mais garde sa forme rectangulaire
@@ -638,8 +819,9 @@ export function AmmoVolumeDemo() {
     glovesInitializedRef.current = true
     const Ammo = ammoRef.current
 
-    const gloveRadius = 0.25
-    const gloveMass = 3
+    // Gants plus gros et plus lourds pour meilleures collisions (comme les balles)
+    const gloveRadius = 0.35  // Augmenté de 0.25 à 0.35
+    const gloveMass = 5       // Augmenté de 3 à 5 (comme les balles)
 
     // Gant gauche
     const leftShape = new Ammo.btSphereShape(gloveRadius)
@@ -649,7 +831,7 @@ export function AmmoVolumeDemo() {
       leftGloveRef.current,
       leftShape,
       gloveMass,
-      new THREE.Vector3(-0.8, 2.5, 4),
+      new THREE.Vector3(-0.8, 3.0, 4),
       new THREE.Quaternion()
     )
     leftBody.setFriction(0.8)
@@ -669,7 +851,7 @@ export function AmmoVolumeDemo() {
       rightGloveRef.current,
       rightShape,
       gloveMass,
-      new THREE.Vector3(0.8, 2.5, 4),
+      new THREE.Vector3(0.8, 3.0, 4),
       new THREE.Quaternion()
     )
     rightBody.setFriction(0.8)
@@ -681,6 +863,31 @@ export function AmmoVolumeDemo() {
 
     console.log('[BoxingGym] Boxing gloves initialized')
   }, [isReady, selectedTool])
+
+  // Réinitialiser les gants quand on change de mode
+  useEffect(() => {
+    if (selectedTool !== 'gloves' && glovesInitializedRef.current) {
+      // Supprimer les physics bodies quand on quitte le mode gants
+      const Ammo = ammoRef.current
+      if (Ammo && physicsWorld) {
+        if (leftGloveBodyRef.current) {
+          physicsWorld.removeRigidBody(leftGloveBodyRef.current)
+          // Retirer de la liste
+          const leftIdx = rigidBodiesList.findIndex(r => r.body === leftGloveBodyRef.current)
+          if (leftIdx !== -1) rigidBodiesList.splice(leftIdx, 1)
+          leftGloveBodyRef.current = null
+        }
+        if (rightGloveBodyRef.current) {
+          physicsWorld.removeRigidBody(rightGloveBodyRef.current)
+          const rightIdx = rigidBodiesList.findIndex(r => r.body === rightGloveBodyRef.current)
+          if (rightIdx !== -1) rigidBodiesList.splice(rightIdx, 1)
+          rightGloveBodyRef.current = null
+        }
+      }
+      glovesInitializedRef.current = false
+      console.log('[BoxingGym] Boxing gloves cleaned up (mode changed)')
+    }
+  }, [selectedTool])
 
   /**
    * Détermine le côté (gauche/droite) basé sur la position X de l'écran
@@ -749,6 +956,17 @@ export function AmmoVolumeDemo() {
     }
   }, [selectedTool, getSideFromScreenX, startPunch])
 
+  // Consommer les coups en attente (déclenchés par UI)
+  useEffect(() => {
+    if (queuedPunch && selectedTool === 'gloves') {
+      const punch = consumeQueuedPunch()
+      if (punch) {
+        console.log(`[Punch] UI triggered ${punch.hand} ${punch.type}`)
+        startPunch(punch.hand, punch.type)
+      }
+    }
+  }, [queuedPunch, selectedTool, consumeQueuedPunch, startPunch])
+
   const processClick = useCallback(() => {
     // Ne traiter que si mode balle sélectionné
     if (!clickRequestRef.current || !ammoRef.current || selectedTool !== 'ball') {
@@ -787,72 +1005,223 @@ export function AmmoVolumeDemo() {
     clickRequestRef.current = false
   }, [camera, scene, selectedTool])
 
-  // Mise à jour des gants de boxe
+  /**
+   * Mise à jour d'une animation de coup
+   * Retourne la nouvelle position du gant, ou null si l'animation est terminée
+   */
+  const updatePunchAnimation = useCallback((
+    anim: PunchAnimation | null,
+    setAnim: (a: PunchAnimation | null) => void
+  ): THREE.Vector3 | null => {
+    if (!anim) return null
+
+    const config = PUNCH_CONFIGS[anim.type]
+    const currentTime = performance.now() / 1000
+    const elapsed = currentTime - anim.startTime
+    const progress = Math.min(elapsed / config.duration, 1)
+
+    // Animation terminée
+    if (progress >= 1) {
+      setAnim(null)
+      return null
+    }
+
+    // Calculer la position via la trajectoire
+    const position = config.trajectory(progress, anim.side)
+    return position
+  }, [])
+
+  /**
+   * Positionner un gant avec Ammo.js via vélocité (pour collisions)
+   * Note: le mesh est synchronisé automatiquement par updatePhysics()
+   */
+  const setGlovePosition = useCallback((body: any, targetPos: THREE.Vector3) => {
+    if (!body || !ammoRef.current) return
+    const Ammo = ammoRef.current
+
+    // Obtenir position actuelle
+    const transform = new Ammo.btTransform()
+    body.getMotionState().getWorldTransform(transform)
+    const origin = transform.getOrigin()
+    const currentPos = new THREE.Vector3(origin.x(), origin.y(), origin.z())
+
+    // Calculer vélocité nécessaire pour atteindre la cible
+    const diff = targetPos.clone().sub(currentPos)
+    const distance = diff.length()
+
+    // Vitesse proportionnelle avec plafond pour éviter traversées
+    // Augmenté pour sensation plus punchy tout en gardant collisions
+    const MAX_VELOCITY = 24
+    const speed = Math.min(distance * 50, MAX_VELOCITY)
+    const velocity = diff.normalize().multiplyScalar(speed)
+
+    // Appliquer vélocité (permet les collisions)
+    body.setLinearVelocity(new Ammo.btVector3(velocity.x, velocity.y, velocity.z))
+    body.setAngularVelocity(new Ammo.btVector3(0, 0, 0))
+    body.activate(true)
+
+    Ammo.destroy(transform)
+  }, [])
+
+  /**
+   * Retour progressif vers la position de repos via vélocité (permet collisions)
+   */
+  const returnToRestPosition = useCallback((
+    body: any,
+    currentPos: THREE.Vector3,
+    restPos: THREE.Vector3,
+    speed: number = 15  // Vitesse de retour
+  ) => {
+    if (!body || !ammoRef.current) return
+    const Ammo = ammoRef.current
+
+    // Calculer vélocité vers la position de repos
+    const diff = restPos.clone().sub(currentPos)
+    const velocity = diff.multiplyScalar(speed)
+
+    // Appliquer vélocité (permet les collisions)
+    body.setLinearVelocity(new Ammo.btVector3(velocity.x, velocity.y, velocity.z))
+    body.setAngularVelocity(new Ammo.btVector3(0, 0, 0))
+    body.activate(true)
+  }, [])
+
+  /**
+   * Appliquer une impulsion exagérée au soft body pour un effet visuel puissant
+   */
+  const applySoftBodyImpact = useCallback((
+    impactPos: THREE.Vector3,
+    impactDir: THREE.Vector3,
+    strength: number
+  ) => {
+    if (!ammoRef.current || softBodiesList.length === 0) return
+    const Ammo = ammoRef.current
+
+    // Trouver le soft body de l'adversaire
+    const opponentSoftBody = softBodiesList[0]?.body
+    if (!opponentSoftBody) return
+
+    const nodes = opponentSoftBody.get_m_nodes()
+    const numNodes = nodes.size()
+
+    // Impulsion modérée pour effet cartoon tout en gardant l'ancrage stable
+    // Réduit de 25 à 12 pour éviter le détachement du ballon
+    const impulseStrength = strength * 12
+    const impulseRadius = 1.5  // Rayon réduit pour impact plus localisé
+
+    for (let i = 0; i < numNodes; i++) {
+      const node = nodes.at(i)
+      const nodePos = node.get_m_x()
+
+      const dx = nodePos.x() - impactPos.x
+      const dy = nodePos.y() - impactPos.y
+      const dz = nodePos.z() - impactPos.z
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+      if (dist < impulseRadius) {
+        const falloff = Math.pow(1 - dist / impulseRadius, 2)
+        const velocity = node.get_m_v()
+        velocity.setX(velocity.x() + impactDir.x * impulseStrength * falloff)
+        velocity.setY(velocity.y() + impactDir.y * impulseStrength * falloff)
+        velocity.setZ(velocity.z() + impactDir.z * impulseStrength * falloff)
+      }
+    }
+  }, [])
+
+  /**
+   * Obtenir la position actuelle d'un gant
+   */
+  const getGlovePosition = useCallback((body: any): THREE.Vector3 => {
+    if (!body || !ammoRef.current) return new THREE.Vector3()
+    const Ammo = ammoRef.current
+
+    const transform = new Ammo.btTransform()
+    body.getMotionState().getWorldTransform(transform)
+    const origin = transform.getOrigin()
+    const pos = new THREE.Vector3(origin.x(), origin.y(), origin.z())
+    Ammo.destroy(transform)
+    return pos
+  }, [])
+
+  // Mise à jour des gants de boxe avec animations
   const updateGloves = useCallback(() => {
     if (!ammoRef.current || selectedTool !== 'gloves') return
-    const Ammo = ammoRef.current
 
     const leftBody = leftGloveBodyRef.current
     const rightBody = rightGloveBodyRef.current
     if (!leftBody || !rightBody) return
 
-    const target = mouseTargetRef.current
-    const punchForce = 50
-    const returnForce = 15
-    const damping = 0.85
+    // Mettre à jour animation gant gauche
+    const leftTargetPos = updatePunchAnimation(leftPunchAnim, setLeftPunchAnim)
+    if (leftTargetPos) {
+      setGlovePosition(leftBody, leftTargetPos)
 
-    // Position de repos des gants
-    const leftRestPos = new THREE.Vector3(-0.8, 2.5, 4)
-    const rightRestPos = new THREE.Vector3(0.8, 2.5, 4)
+      // Détecter impact gant gauche
+      const distToOpponent = leftTargetPos.distanceTo(OPPONENT_CENTER)
+      if (distToOpponent < IMPACT_THRESHOLD && !leftImpactTriggeredRef.current) {
+        leftImpactTriggeredRef.current = true
 
-    // Récupérer positions actuelles
-    const leftTransform = new Ammo.btTransform()
-    leftBody.getMotionState().getWorldTransform(leftTransform)
-    const leftPos = leftTransform.getOrigin()
-    const leftCurrentPos = new THREE.Vector3(leftPos.x(), leftPos.y(), leftPos.z())
+        // Calculer direction d'impact (vers l'opposant)
+        const impactDir = new THREE.Vector3()
+          .subVectors(OPPONENT_CENTER, leftTargetPos)
+          .normalize()
 
-    const rightTransform = new Ammo.btTransform()
-    rightBody.getMotionState().getWorldTransform(rightTransform)
-    const rightPos = rightTransform.getOrigin()
-    const rightCurrentPos = new THREE.Vector3(rightPos.x(), rightPos.y(), rightPos.z())
+        // Déclencher effets visuels
+        addImpact([leftTargetPos.x, leftTargetPos.y, leftTargetPos.z], 0.8 + Math.random() * 0.2)
 
-    // Appliquer forces
-    if (isLeftPunching) {
-      // Punch vers la cible (vers l'avant z-)
-      const punchTarget = new THREE.Vector3(target.x - 0.5, target.y, 0)
-      const dir = punchTarget.clone().sub(leftCurrentPos).normalize()
-      const force = new Ammo.btVector3(dir.x * punchForce, dir.y * punchForce, dir.z * punchForce * 2)
-      leftBody.applyCentralForce(force)
-      Ammo.destroy(force)
+        // Appliquer impulsion exagérée au soft body
+        applySoftBodyImpact(leftTargetPos, impactDir, 1.2)
+      }
     } else {
-      // Retour vers position de repos
-      const dir = leftRestPos.clone().sub(leftCurrentPos)
-      const force = new Ammo.btVector3(dir.x * returnForce, dir.y * returnForce, dir.z * returnForce)
-      leftBody.applyCentralForce(force)
-      Ammo.destroy(force)
-      // Amortissement
-      const vel = leftBody.getLinearVelocity()
-      leftBody.setLinearVelocity(new Ammo.btVector3(vel.x() * damping, vel.y() * damping, vel.z() * damping))
+      // Pas d'animation - retour vers position de repos
+      const currentLeftPos = getGlovePosition(leftBody)
+      returnToRestPosition(leftBody, currentLeftPos, LEFT_REST_POS)
+      // Reset trigger pour prochain coup
+      leftImpactTriggeredRef.current = false
     }
 
-    if (isRightPunching) {
-      const punchTarget = new THREE.Vector3(target.x + 0.5, target.y, 0)
-      const dir = punchTarget.clone().sub(rightCurrentPos).normalize()
-      const force = new Ammo.btVector3(dir.x * punchForce, dir.y * punchForce, dir.z * punchForce * 2)
-      rightBody.applyCentralForce(force)
-      Ammo.destroy(force)
-    } else {
-      const dir = rightRestPos.clone().sub(rightCurrentPos)
-      const force = new Ammo.btVector3(dir.x * returnForce, dir.y * returnForce, dir.z * returnForce)
-      rightBody.applyCentralForce(force)
-      Ammo.destroy(force)
-      const vel = rightBody.getLinearVelocity()
-      rightBody.setLinearVelocity(new Ammo.btVector3(vel.x() * damping, vel.y() * damping, vel.z() * damping))
-    }
+    // Mettre à jour animation gant droit
+    const rightTargetPos = updatePunchAnimation(rightPunchAnim, setRightPunchAnim)
+    if (rightTargetPos) {
+      setGlovePosition(rightBody, rightTargetPos)
 
-    Ammo.destroy(leftTransform)
-    Ammo.destroy(rightTransform)
-  }, [selectedTool, isLeftPunching, isRightPunching])
+      // Détecter impact gant droit
+      const distToOpponent = rightTargetPos.distanceTo(OPPONENT_CENTER)
+      if (distToOpponent < IMPACT_THRESHOLD && !rightImpactTriggeredRef.current) {
+        rightImpactTriggeredRef.current = true
+
+        // Calculer direction d'impact (vers l'opposant)
+        const impactDir = new THREE.Vector3()
+          .subVectors(OPPONENT_CENTER, rightTargetPos)
+          .normalize()
+
+        // Déclencher effets visuels
+        addImpact([rightTargetPos.x, rightTargetPos.y, rightTargetPos.z], 0.8 + Math.random() * 0.2)
+
+        // Appliquer impulsion exagérée au soft body
+        applySoftBodyImpact(rightTargetPos, impactDir, 1.2)
+      }
+    } else {
+      // Pas d'animation - retour vers position de repos
+      const currentRightPos = getGlovePosition(rightBody)
+      returnToRestPosition(rightBody, currentRightPos, RIGHT_REST_POS)
+      // Reset trigger pour prochain coup
+      rightImpactTriggeredRef.current = false
+    }
+  }, [
+    selectedTool,
+    leftPunchAnim,
+    rightPunchAnim,
+    updatePunchAnimation,
+    setGlovePosition,
+    getGlovePosition,
+    returnToRestPosition,
+    LEFT_REST_POS,
+    RIGHT_REST_POS,
+    addImpact,
+    applySoftBodyImpact,
+    OPPONENT_CENTER,
+    IMPACT_THRESHOLD
+  ])
 
   useFrame((_, delta) => {
     if (!isReady) return
@@ -939,9 +1308,30 @@ export function AmmoVolumeDemo() {
         <meshStandardMaterial color={accentColor} />
       </mesh>
 
-      {/* === ADVERSAIRES === */}
+      {/* === ADVERSAIRE CENTRÉ (Soft Body) === */}
+      {selectedOpponent !== 'multipart' && (
+        <mesh ref={opponentRef} frustumCulled={false} castShadow receiveShadow>
+          {/* Geometry sera remplacée dynamiquement selon le type */}
+          <sphereGeometry args={[1.2, 40, 25]} />
+          <meshStandardMaterial
+            map={opponentTexture}
+            color={opponentTexture ? 0xffffff : (
+              selectedOpponent === 'sphere' ? 0xcc2222
+              : selectedOpponent === 'box' ? 0x22cc22
+              : selectedOpponent === 'fluffy' ? 0xff69b4
+              : selectedOpponent === 'littlemac' ? 0x44bb44
+              : 0xcc2222
+            )}
+            roughness={selectedOpponent === 'littlemac' ? 0.6 : 0.4}
+          />
+        </mesh>
+      )}
 
-      {/* FLUFFY - Sacs de frappe soft body */}
+      {/* === ADVERSAIRE MULTI-PARTIES === */}
+      {selectedOpponent === 'multipart' && <MultiPartOpponent />}
+
+      {/* === ADVERSAIRES LEGACY (Fluffy) === */}
+      {/* FLUFFY - Sacs de frappe soft body (gardé pour compatibilité CharacterSelector) */}
       {showFluffyBags && (
         <>
           {/* Sphère (gauche) */}
@@ -1083,22 +1473,38 @@ export function AmmoVolumeDemo() {
       {/* === GANTS DE BOXE === */}
       {selectedTool === 'gloves' && (
         <>
-          {/* Gant gauche */}
-          <mesh ref={leftGloveRef} position={[-0.8, 2.5, 4]} castShadow>
-            <sphereGeometry args={[0.25, 16, 16]} />
+          {/* Gant gauche - rayon 0.35 pour correspondre au physics body */}
+          <mesh ref={leftGloveRef} position={[-0.8, 3.0, 4]} castShadow>
+            <sphereGeometry args={[0.35, 16, 16]} />
             <meshStandardMaterial
-              color={isLeftPunching ? 0xff4400 : 0xcc0000}
+              color={
+                leftPunchAnim
+                  ? leftPunchAnim.type === 'jab' ? 0xff4400
+                    : leftPunchAnim.type === 'hook' ? 0xffaa00
+                    : 0xff00aa  // uppercut
+                  : 0xcc0000   // repos
+              }
               roughness={0.4}
               metalness={0.1}
+              emissive={leftPunchAnim ? 0x331100 : 0x000000}
+              emissiveIntensity={leftPunchAnim ? 0.5 : 0}
             />
           </mesh>
-          {/* Gant droit */}
-          <mesh ref={rightGloveRef} position={[0.8, 2.5, 4]} castShadow>
-            <sphereGeometry args={[0.25, 16, 16]} />
+          {/* Gant droit - rayon 0.35 pour correspondre au physics body */}
+          <mesh ref={rightGloveRef} position={[0.8, 3.0, 4]} castShadow>
+            <sphereGeometry args={[0.35, 16, 16]} />
             <meshStandardMaterial
-              color={isRightPunching ? 0xff4400 : 0xcc0000}
+              color={
+                rightPunchAnim
+                  ? rightPunchAnim.type === 'jab' ? 0xff4400
+                    : rightPunchAnim.type === 'hook' ? 0xffaa00
+                    : 0xff00aa  // uppercut
+                  : 0xcc0000   // repos
+              }
               roughness={0.4}
               metalness={0.1}
+              emissive={rightPunchAnim ? 0x331100 : 0x000000}
+              emissiveIntensity={rightPunchAnim ? 0.5 : 0}
             />
           </mesh>
         </>
@@ -1132,6 +1538,9 @@ export function AmmoVolumeDemo() {
         <cylinderGeometry args={[0.05, 0.05, 1, 8]} />
         <meshStandardMaterial color={0x222222} />
       </mesh>
+
+      {/* === EFFETS D'IMPACT === */}
+      <ImpactEffects />
     </group>
   )
 }

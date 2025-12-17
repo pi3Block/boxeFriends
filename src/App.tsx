@@ -24,7 +24,7 @@ function App() {
           {/* Caméra */}
           <PerspectiveCamera
             makeDefault
-            position={[0, 4, 12]}
+            position={[0, 4, 8]}
             fov={60}
             near={0.2}
             far={2000}

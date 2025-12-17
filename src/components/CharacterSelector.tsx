@@ -32,13 +32,6 @@ const AVAILABLE_MODELS: CharacterConfig[] = [
     scale: 2.5,
     headBone: 'head',
   },
-  {
-    id: 'humanoid',
-    name: 'Humanoïde',
-    modelPath: '/meshes/Humanoid.glb',
-    scale: 1.5,
-    headBone: 'head',
-  },
 ]
 
 // Preload GLTF models en background pour éviter le lag au premier chargement

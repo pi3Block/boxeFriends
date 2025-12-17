@@ -52,6 +52,13 @@ const DEFAULT_CHARACTERS: CharacterConfig[] = [
     scale: 1.2,
   },
   {
+    id: 'littlemac',
+    name: 'Little Mac (Ellipsoid)',
+    modelPath: '', // Procédural - ellipsoïde soft body
+    scale: 1.0,
+    thumbnail: '/docs/image-exemple/Little_Mac.webp',
+  },
+  {
     id: 'facecap',
     name: 'Visage ARKit',
     modelPath: '/meshes/facecap.glb',
@@ -63,7 +70,7 @@ const DEFAULT_CHARACTERS: CharacterConfig[] = [
 
 export const useCharacterStore = create<CharacterStore>((set, get) => ({
   characters: DEFAULT_CHARACTERS,
-  selectedCharacterId: 'facecap',
+  selectedCharacterId: 'fluffy',
 
   setCharacters: (characters) => {
     set({ characters })

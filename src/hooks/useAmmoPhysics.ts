@@ -103,8 +103,16 @@ async function loadAmmoSingleton(): Promise<void> {
         })
       }
 
-      // Initialiser Ammo
-      const Ammo = await window.Ammo()
+      // Initialiser Ammo - gérer les deux patterns (fonction vs objet direct)
+      let Ammo: any
+      if (typeof window.Ammo === 'function') {
+        Ammo = await window.Ammo()
+      } else if (window.Ammo) {
+        // Déjà initialisé ou pattern différent
+        Ammo = window.Ammo
+      } else {
+        throw new Error('Ammo.js failed to load')
+      }
       ammoInstance = Ammo
 
       // Configuration de la physique soft body
@@ -293,6 +301,17 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
   }
 
   /**
+   * Options pour créer un ellipsoïde soft body
+   */
+  interface CreateEllipsoidOptions {
+    center?: THREE.Vector3
+    radius?: THREE.Vector3  // Rayon X, Y, Z pour forme ovale
+    resolution?: number     // Subdivisions (vertices = 3 + resolution)
+    mass?: number
+    pressure?: number
+  }
+
+  /**
    * Créer un soft body volumétrique
    * Empêche les créations multiples pour le même mesh
    */
@@ -342,10 +361,10 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
         true
       )
 
-      // Configurer (comme dans l'exemple ammo.js)
+      // Configurer (optimisé pour performance)
       const sbConfig = softBody.get_m_cfg()
-      sbConfig.set_viterations(50) // Plus d'itérations pour stabilité
-      sbConfig.set_piterations(50)
+      sbConfig.set_viterations(25) // Réduit de 50 à 25 pour perf
+      sbConfig.set_piterations(25)
       sbConfig.set_collisions(0x11)
       sbConfig.set_kDF(0.2) // Friction légèrement plus haute
       sbConfig.set_kDP(0.02) // Damping un peu plus haut pour réduire oscillations
@@ -385,6 +404,342 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
       return state
     },
     [processGeometry]
+  )
+
+  /**
+   * Créer un ellipsoïde soft body via btSoftBodyHelpers.CreateEllipsoid
+   * Idéal pour une tête de personnage (forme ovale naturelle)
+   */
+  const createEllipsoid = useCallback(
+    (options: CreateEllipsoidOptions = {}): { softBody: any; numNodes: number } | null => {
+      const Ammo = ammoRef.current
+      const physicsWorld = physicsWorldRef.current
+      const softBodyHelpers = softBodyHelpersRef.current
+
+      if (!Ammo || !physicsWorld || !softBodyHelpers) {
+        console.error('Ammo.js not initialized')
+        return null
+      }
+
+      const {
+        center = new THREE.Vector3(0, 0, 0),
+        radius = new THREE.Vector3(1, 1.2, 1), // Légèrement ovale en Y (tête)
+        resolution = 15,
+        mass = 10,
+        pressure = 250,
+      } = options
+
+      // Créer les vecteurs Ammo
+      const btCenter = new Ammo.btVector3(center.x, center.y, center.z)
+      const btRadius = new Ammo.btVector3(radius.x, radius.y, radius.z)
+
+      // Créer l'ellipsoïde
+      const softBody = softBodyHelpers.CreateEllipsoid(
+        physicsWorld.getWorldInfo(),
+        btCenter,
+        btRadius,
+        resolution
+      )
+
+      // Nettoyer les vecteurs temporaires
+      Ammo.destroy(btCenter)
+      Ammo.destroy(btRadius)
+
+      if (!softBody) {
+        console.error('Failed to create ellipsoid soft body')
+        return null
+      }
+
+      // Configurer le soft body (optimisé)
+      const sbConfig = softBody.get_m_cfg()
+      sbConfig.set_viterations(25)
+      sbConfig.set_piterations(25)
+      sbConfig.set_collisions(0x11)
+      sbConfig.set_kDF(0.2)
+      sbConfig.set_kDP(0.02)
+      sbConfig.set_kPR(pressure)
+
+      // Raideur pour garder la forme
+      softBody.get_m_materials().at(0).set_m_kLST(0.9)
+      softBody.get_m_materials().at(0).set_m_kAST(0.9)
+      softBody.setTotalMass(mass, false)
+
+      const margin = 0.05
+      Ammo.castObject(softBody, Ammo.btCollisionObject)
+        .getCollisionShape()
+        .setMargin(margin)
+
+      physicsWorld.addSoftBody(softBody, 1, -1)
+      softBody.setActivationState(4)
+
+      const numNodes = softBody.get_m_nodes().size()
+
+      console.log(
+        `Ellipsoid soft body created: ${numNodes} nodes, resolution=${resolution}, pressure=${pressure}`
+      )
+
+      return { softBody, numNodes }
+    },
+    []
+  )
+
+  /**
+   * Synchroniser un mesh Three.js avec un ellipsoïde soft body
+   * Retourne le SoftBodyState pour utilisation ultérieure
+   */
+  const syncEllipsoidToMesh = useCallback(
+    (
+      softBody: any,
+      mesh: THREE.Mesh,
+      numNodes: number
+    ): SoftBodyState | null => {
+      if (!softBody || !mesh) return null
+
+      // Extraire les positions des nodes pour créer la géométrie Three.js
+      const nodes = softBody.get_m_nodes()
+      const positions: number[] = []
+
+      for (let i = 0; i < numNodes; i++) {
+        const node = nodes.at(i)
+        const pos = node.get_m_x()
+        positions.push(pos.x(), pos.y(), pos.z())
+      }
+
+      // Créer une géométrie convexe à partir des points
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+
+      // Créer les indices pour les triangles (triangulation simple)
+      const indices = triangulateConvexPoints(positions, numNodes)
+      geometry.setIndex(indices)
+      geometry.computeVertexNormals()
+
+      mesh.geometry = geometry
+
+      // Créer l'association d'indices (1:1 pour ellipsoïde)
+      const indexAssociation: number[][] = []
+      for (let i = 0; i < numNodes; i++) {
+        indexAssociation.push([i * 3])
+      }
+
+      const state: SoftBodyState = {
+        mesh,
+        softBody,
+        indexAssociation,
+        gravityDisabled: false,
+      }
+
+      softBodiesGlobal.push(state)
+
+      return state
+    },
+    []
+  )
+
+  /**
+   * Helper: Trianguler des points convexes pour créer des faces
+   */
+  function triangulateConvexPoints(positions: number[], numPoints: number): number[] {
+    const indices: number[] = []
+    if (numPoints < 4) return indices
+
+    // Calculer le centre
+    let cx = 0, cy = 0, cz = 0
+    for (let i = 0; i < numPoints; i++) {
+      cx += positions[i * 3]!
+      cy += positions[i * 3 + 1]!
+      cz += positions[i * 3 + 2]!
+    }
+    cx /= numPoints
+    cy /= numPoints
+    cz /= numPoints
+
+    const center = new THREE.Vector3(cx, cy, cz)
+    const points: THREE.Vector3[] = []
+
+    for (let i = 0; i < numPoints; i++) {
+      points.push(new THREE.Vector3(
+        positions[i * 3]!,
+        positions[i * 3 + 1]!,
+        positions[i * 3 + 2]!
+      ))
+    }
+
+    // Triangulation par plus proches voisins
+    const used = new Set<string>()
+
+    for (let i = 0; i < numPoints; i++) {
+      const p1 = points[i]!
+
+      // Trouver les voisins les plus proches
+      const distances: { idx: number; dist: number }[] = []
+      for (let j = 0; j < numPoints; j++) {
+        if (i !== j) {
+          distances.push({ idx: j, dist: p1.distanceTo(points[j]!) })
+        }
+      }
+      distances.sort((a, b) => a.dist - b.dist)
+
+      // Créer des triangles avec les 5 plus proches voisins
+      for (let k = 0; k < Math.min(5, distances.length - 1); k++) {
+        const j = distances[k]!.idx
+        const l = distances[k + 1]!.idx
+
+        const key = [i, j, l].sort().join('-')
+        if (!used.has(key)) {
+          used.add(key)
+
+          // Orienter la face vers l'extérieur
+          const v1 = new THREE.Vector3().subVectors(points[j]!, p1)
+          const v2 = new THREE.Vector3().subVectors(points[l]!, p1)
+          const normal = new THREE.Vector3().crossVectors(v1, v2)
+          const toCenter = new THREE.Vector3().subVectors(center, p1)
+
+          if (normal.dot(toCenter) > 0) {
+            indices.push(i, l, j)
+          } else {
+            indices.push(i, j, l)
+          }
+        }
+      }
+    }
+
+    return indices
+  }
+
+  /**
+   * État d'un rope soft body
+   */
+  interface RopeSoftBodyState {
+    softBody: any
+    numSegments: number
+  }
+
+  /**
+   * Options pour créer une corde soft body
+   */
+  interface CreateRopeOptions {
+    start: THREE.Vector3
+    end: THREE.Vector3
+    numSegments?: number
+    mass?: number
+    fixStart?: boolean  // Fixer le premier node
+    fixEnd?: boolean    // Fixer le dernier node
+  }
+
+  /**
+   * Créer une corde soft body via btSoftBodyHelpers.CreateRope
+   * Utile pour connecter des parties du corps
+   */
+  const createRope = useCallback(
+    (options: CreateRopeOptions): RopeSoftBodyState | null => {
+      const Ammo = ammoRef.current
+      const physicsWorld = physicsWorldRef.current
+      const softBodyHelpers = softBodyHelpersRef.current
+
+      if (!Ammo || !physicsWorld || !softBodyHelpers) {
+        console.error('Ammo.js not initialized')
+        return null
+      }
+
+      const {
+        start,
+        end,
+        numSegments = 8,
+        mass = 0.5,
+        fixStart = false,
+        fixEnd = false,
+      } = options
+
+      // Flags pour les nodes fixes (0 = aucun, 1 = start, 2 = end, 3 = both)
+      let fixedNodes = 0
+      if (fixStart) fixedNodes |= 1
+      if (fixEnd) fixedNodes |= 2
+
+      const btStart = new Ammo.btVector3(start.x, start.y, start.z)
+      const btEnd = new Ammo.btVector3(end.x, end.y, end.z)
+
+      const softBody = softBodyHelpers.CreateRope(
+        physicsWorld.getWorldInfo(),
+        btStart,
+        btEnd,
+        numSegments - 1,
+        fixedNodes
+      )
+
+      Ammo.destroy(btStart)
+      Ammo.destroy(btEnd)
+
+      if (!softBody) {
+        console.error('Failed to create rope soft body')
+        return null
+      }
+
+      // Configurer le soft body
+      const sbConfig = softBody.get_m_cfg()
+      sbConfig.set_viterations(10)
+      sbConfig.set_piterations(10)
+
+      softBody.setTotalMass(mass, false)
+      physicsWorld.addSoftBody(softBody, 1, -1)
+      softBody.setActivationState(4)
+
+      console.log(`Rope soft body created: ${numSegments} segments, fixed=${fixedNodes}`)
+
+      return { softBody, numSegments }
+    },
+    []
+  )
+
+  /**
+   * Ancrer un node d'un soft body à un rigid body
+   * C'est LA méthode pour connecter soft bodies entre eux (via rigid body intermédiaire)
+   */
+  const anchorSoftBodyToRigid = useCallback(
+    (
+      softBody: any,
+      nodeIndex: number,
+      rigidBody: any,
+      disableCollision: boolean = true,
+      influence: number = 1.0
+    ) => {
+      if (!softBody || !rigidBody) {
+        console.error('Invalid soft body or rigid body')
+        return
+      }
+
+      softBody.appendAnchor(nodeIndex, rigidBody, disableCollision, influence)
+      console.log(`Anchored soft body node ${nodeIndex} to rigid body (influence=${influence})`)
+    },
+    []
+  )
+
+  /**
+   * Trouver les indices des nodes les plus hauts/bas d'un soft body
+   */
+  const findExtremeNodes = useCallback(
+    (softBody: any): { topNode: number; bottomNode: number; frontNode: number; backNode: number } => {
+      const nodes = softBody.get_m_nodes()
+      const numNodes = nodes.size()
+
+      let topNode = 0, bottomNode = 0, frontNode = 0, backNode = 0
+      let maxY = -Infinity, minY = Infinity
+      let maxZ = -Infinity, minZ = Infinity
+
+      for (let i = 0; i < numNodes; i++) {
+        const pos = nodes.at(i).get_m_x()
+        const y = pos.y()
+        const z = pos.z()
+
+        if (y > maxY) { maxY = y; topNode = i }
+        if (y < minY) { minY = y; bottomNode = i }
+        if (z > maxZ) { maxZ = z; frontNode = i }
+        if (z < minZ) { minZ = z; backNode = i }
+      }
+
+      return { topNode, bottomNode, frontNode, backNode }
+    },
+    []
   )
 
   /**
@@ -656,7 +1011,7 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
     const physicsWorld = physicsWorldRef.current
     if (!physicsWorld) return
 
-    physicsWorld.stepSimulation(deltaTime, 10)
+    physicsWorld.stepSimulation(deltaTime, 5)  // Réduit de 10 à 5 pour perf
 
     for (const { mesh, softBody, indexAssociation } of softBodiesGlobal) {
       const geometry = mesh.geometry
@@ -703,11 +1058,8 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
         normalAttr.needsUpdate = true
       }
 
-      // Recalculer les normales pour un meilleur rendu
-      geometry.computeVertexNormals()
-
-      // Mettre à jour la bounding sphere pour le culling
-      geometry.computeBoundingSphere()
+      // Note: computeVertexNormals() supprimé car les normales viennent déjà d'Ammo.js
+      // computeBoundingSphere() peut être appelé moins souvent si nécessaire
     }
   }, [])
 
@@ -885,6 +1237,11 @@ export function useAmmoPhysics(_config: Partial<AmmoPhysicsConfig> = {}) {
 
     // Soft bodies
     createSoftVolume,
+    createEllipsoid,
+    syncEllipsoidToMesh,
+    createRope,
+    anchorSoftBodyToRigid,
+    findExtremeNodes,
     applySoftBodyImpulse,
     applyCenteringForce,
     anchorBackNodes,

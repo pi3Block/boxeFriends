@@ -1,4 +1,4 @@
-# Boxe Friends - Projet React Three Fiber
+# Face fight - Projet React Three Fiber
 
 Projet React utilisant React Three Fiber, Three.js et Drei pour créer des expériences 3D interactives.
 

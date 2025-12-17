@@ -11,9 +11,28 @@ export type GameState = 'LOBBY' | 'FIGHTING' | 'KO'
 export type PunchType = 'jab' | 'hook' | 'uppercut'
 
 /**
+ * Main utilisée pour le coup
+ */
+export type PunchHand = 'left' | 'right'
+
+/**
+ * Punch en attente déclenché par UI
+ */
+export interface QueuedPunch {
+  type: PunchType
+  hand: PunchHand
+  timestamp: number
+}
+
+/**
  * Outil de combat sélectionné
  */
 export type CombatTool = 'ball' | 'gloves'
+
+/**
+ * Type d'adversaire (sac de frappe)
+ */
+export type OpponentType = 'sphere' | 'box' | 'fluffy' | 'littlemac' | 'multipart'
 
 /**
  * Texture par défaut de l'adversaire
@@ -61,6 +80,9 @@ interface GameStore {
   // Outil de combat sélectionné
   selectedTool: CombatTool
 
+  // Type d'adversaire sélectionné
+  selectedOpponent: OpponentType
+
   // Timestamp du dernier coup (pour reset combo)
   lastHitTime: number
 
@@ -84,6 +106,14 @@ interface GameStore {
 
   // Action outil
   setSelectedTool: (tool: CombatTool) => void
+
+  // Action adversaire
+  setSelectedOpponent: (opponent: OpponentType) => void
+
+  // Système de punch déclenché par UI
+  queuedPunch: QueuedPunch | null
+  queuePunch: (type: PunchType, hand?: PunchHand) => void
+  consumeQueuedPunch: () => QueuedPunch | null
 }
 
 // Délai avant reset du combo (ms)
@@ -114,6 +144,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // Outil par défaut
   selectedTool: 'gloves',
+
+  // Adversaire par défaut
+  selectedOpponent: 'sphere',
+
+  // Punch en attente (déclenché par boutons UI)
+  queuedPunch: null,
 
   // Définir la texture de l'adversaire (upload utilisateur)
   setTexture: (url: string) => {
@@ -249,4 +285,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // Action outil
   setSelectedTool: (tool) => set({ selectedTool: tool }),
+
+  // Action adversaire
+  setSelectedOpponent: (opponent) => set({ selectedOpponent: opponent }),
+
+  // Ajouter un punch à la queue (déclenché par boutons UI)
+  queuePunch: (type: PunchType, hand?: PunchHand) => {
+    // Alterner la main si non spécifiée
+    const currentHand = hand || (Math.random() > 0.5 ? 'left' : 'right')
+    set({
+      queuedPunch: {
+        type,
+        hand: currentHand,
+        timestamp: Date.now(),
+      },
+    })
+  },
+
+  // Consommer le punch en attente (appelé par le système de gloves)
+  consumeQueuedPunch: () => {
+    const state = get()
+    const punch = state.queuedPunch
+    if (punch) {
+      set({ queuedPunch: null })
+    }
+    return punch
+  },
 }))
