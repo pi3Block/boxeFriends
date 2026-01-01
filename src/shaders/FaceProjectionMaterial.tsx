@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import * as THREE from 'three'
-import { useImpactStore } from '../stores'
+import { ImpactManager } from '../stores'
 
 /**
  * Vertex shader avec projection frontale de texture
@@ -135,8 +135,7 @@ export function FaceProjectionMaterial({
 }: FaceProjectionMaterialProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const materialRef = useRef<any>(null)
-  const impacts = useImpactStore((state) => state.impacts)
-  const tick = useImpactStore((state) => state.tick)
+  // ImpactManager utilisé directement dans useFrame (pas de subscription React)
 
   const hitPointsArray = useMemo(() => [
     new THREE.Vector3(),
@@ -173,7 +172,8 @@ export function FaceProjectionMaterial({
 
   // Mise à jour des uniforms chaque frame
   useFrame((_, delta) => {
-    tick(delta)
+    // Tick impacts via ImpactManager (mutation directe, pas de re-render)
+    ImpactManager.tick(delta)
 
     if (!materialRef.current) return
 
@@ -185,7 +185,8 @@ export function FaceProjectionMaterial({
       strengthsArray[i] = 0
     }
 
-    // Remplir avec impacts actifs
+    // Remplir avec impacts actifs (lecture directe)
+    const impacts = ImpactManager.getImpacts()
     impacts.forEach((impact, i) => {
       if (i < 5) {
         hitPointsArray[i]?.set(...impact.hitPoint)

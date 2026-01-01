@@ -153,6 +153,10 @@ async function loadAmmoSingleton(): Promise<void> {
 
       isAmmoReady = true
 
+      // Exposer le monde physique ET l'instance Ammo globalement pour les composants qui en ont besoin
+      ;(window as any).__ammoPhysicsWorld = physicsWorldInstance
+      ;(window as any).__ammoInstance = Ammo
+
       console.log('Ammo.js physics world initialized (singleton) - supports soft bodies + rigid bodies')
 
       // Notifier tous les hooks en attente

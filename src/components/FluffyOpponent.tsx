@@ -1,10 +1,10 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useControls, folder } from 'leva'
 import { useAmmoPhysics, SoftBodyState, COLLISION_GROUPS } from '../hooks/useAmmoPhysics'
-import { useImpactStore, useGameStore } from '../stores'
+import { useGameStore } from '../stores'
+import { useImpactListener } from '../hooks/useImpactListener'
 
 /**
  * Configuration du sac de frappe
@@ -31,12 +31,34 @@ export function FluffyOpponent() {
   const meshRef = useRef<THREE.Mesh>(null)
   const softBodyStateRef = useRef<SoftBodyState | null>(null)
   const initAttemptedRef = useRef(false)
-  const lastImpactIdRef = useRef<number>(-1)
   const anchorNodeRef = useRef<number>(0)
   const anchorRigidBodyRef = useRef<any>(null)
 
   const [isInitialized, setIsInitialized] = useState(false)
-  const [ropeEndPos, setRopeEndPos] = useState<[number, number, number]>([0, BAG_CONFIG.anchorHeight, 0])
+  // Position de la corde - useRef pour éviter re-render chaque frame
+  const ropeEndPosRef = useRef<[number, number, number]>([0, BAG_CONFIG.anchorHeight, 0])
+  const lineRef = useRef<THREE.Line>(null)
+
+  // Géométrie de la corde (pré-allouée)
+  const ropeGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry()
+    const positions = new Float32Array([
+      0, BAG_CONFIG.anchorHeight + 0.3, 0,  // Point d'ancrage
+      0, BAG_CONFIG.anchorHeight, 0,         // Point sur le soft body
+    ])
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    return geo
+  }, [])
+
+  // Material de la corde
+  const ropeMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({ color: 0x8B4513, linewidth: 2 })
+  }, [])
+
+  // Objet ligne pré-alloué
+  const ropeLine = useMemo(() => {
+    return new THREE.Line(ropeGeometry, ropeMaterial)
+  }, [ropeGeometry, ropeMaterial])
 
   // Hook ammo.js
   const {
@@ -51,7 +73,6 @@ export function FluffyOpponent() {
   } = useAmmoPhysics()
 
   // Stores
-  const impacts = useImpactStore((s) => s.impacts)
   const opponentHp = useGameStore((s) => s.opponentHp)
 
   // Contrôles Leva
@@ -189,47 +210,48 @@ export function FluffyOpponent() {
     }
   }, [isReady, geometry, createSoftVolume, createRigidBody, removeSoftBody, removeRigidBody, findAnchorNodes, anchorToRigidBody, controls.mass, controls.pressure])
 
-  // Traiter les impacts
-  useEffect(() => {
-    if (impacts.length === 0 || !softBodyStateRef.current) return
-
-    const latest = impacts[impacts.length - 1]
-    if (!latest || latest.id === lastImpactIdRef.current) return
-
-    lastImpactIdRef.current = latest.id
+  // Traiter les impacts via callback (pas de re-render React)
+  useImpactListener((impact) => {
+    if (!softBodyStateRef.current) return
 
     const hitPosition = new THREE.Vector3(
-      latest.hitPoint[0] * BAG_CONFIG.radius,
-      latest.hitPoint[1] * BAG_CONFIG.radius + BAG_CONFIG.anchorHeight - BAG_CONFIG.radius,
-      latest.hitPoint[2] * BAG_CONFIG.radius
+      impact.hitPoint[0] * BAG_CONFIG.radius,
+      impact.hitPoint[1] * BAG_CONFIG.radius + BAG_CONFIG.anchorHeight - BAG_CONFIG.radius,
+      impact.hitPoint[2] * BAG_CONFIG.radius
     )
 
     // Force réduite pour éviter les déformations excessives
     const force = new THREE.Vector3(
-      -latest.hitPoint[0] * 5,
+      -impact.hitPoint[0] * 5,
       0,
-      -latest.strength * 15
+      -impact.strength * 15
     )
 
     // Rayon d'impact plus petit pour une déformation plus localisée
-    const radius = 0.3 + latest.strength * 0.3
+    const radius = 0.3 + impact.strength * 0.3
 
     applySoftBodyImpulse(softBodyStateRef.current, hitPosition, force, radius)
-  }, [impacts, applySoftBodyImpulse])
+  })
 
-  // Boucle principale
+  // Boucle principale - mutation directe, pas de setState
   useFrame((_, delta) => {
     if (!isInitialized || !softBodyStateRef.current || !meshRef.current) return
 
     updatePhysics(delta)
 
-    // Mettre à jour la position de la corde
+    // Mettre à jour la position de la corde via ref (pas de re-render)
     const positions = meshRef.current.geometry.attributes.position.array
     const anchorIdx = anchorNodeRef.current * 3
     const newX = positions[anchorIdx] ?? 0
     const newY = positions[anchorIdx + 1] ?? BAG_CONFIG.anchorHeight
     const newZ = positions[anchorIdx + 2] ?? 0
-    setRopeEndPos([newX, newY, newZ])
+    ropeEndPosRef.current = [newX, newY, newZ]
+
+    // Mettre à jour la géométrie de la corde directement (pas de re-render)
+    const ropePositions = ropeGeometry.attributes.position as THREE.BufferAttribute
+    // Point 2: position du soft body (index 1 = offset 3)
+    ropePositions.setXYZ(1, newX, newY, newZ)
+    ropePositions.needsUpdate = true
   })
 
   // Couleur basée sur HP
@@ -239,11 +261,6 @@ export function FluffyOpponent() {
     return baseColor.lerp(new THREE.Color('#ff0000'), 1 - hpRatio)
   }, [opponentHp, controls.color])
 
-  // Points de la corde
-  const ropePoints: [number, number, number][] = useMemo(() => [
-    [0, BAG_CONFIG.anchorHeight + 0.3, 0],
-    ropeEndPos,
-  ], [ropeEndPos])
 
   if (!isReady) {
     return (
@@ -256,8 +273,8 @@ export function FluffyOpponent() {
 
   return (
     <group>
-      {/* Corde */}
-      <Line points={ropePoints} color="#8B4513" lineWidth={4} />
+      {/* Corde - géométrie mise à jour directement dans useFrame (pas de re-render) */}
+      <primitive object={ropeLine} />
 
       {/* Point d'ancrage */}
       <mesh position={[0, BAG_CONFIG.anchorHeight + 0.3, 0]}>

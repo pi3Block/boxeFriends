@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from 'react'
-import { useImpactStore, useGameStore } from '../stores'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { useGameStore } from '../stores'
+import { useImpactListener } from '../hooks/useImpactListener'
 
 /**
  * Textes d'impact style comics
@@ -28,31 +29,26 @@ interface ScreenEffect {
  * - Nombres de dégâts
  */
 export function ImpactOverlay() {
-  const impacts = useImpactStore((state) => state.impacts)
-  const opponentHp = useGameStore((state) => state.opponentHp)
+  // Subscriptions React uniquement pour les valeurs qui affectent le rendu
   const gameState = useGameStore((state) => state.gameState)
 
   const [effects, setEffects] = useState<ScreenEffect[]>([])
-  const lastImpactId = useRef<number>(-1)
   const lastHp = useRef<number>(100)
   const effectId = useRef<number>(0)
 
-  // Détecter les nouveaux impacts
-  useEffect(() => {
-    if (gameState !== 'FIGHTING') return
-    if (impacts.length === 0) return
+  // Écouter les nouveaux impacts via callback (pas de re-render React)
+  useImpactListener(useCallback((impact) => {
+    // Vérifier le gameState sans subscription (lecture directe)
+    const currentGameState = useGameStore.getState().gameState
+    if (currentGameState !== 'FIGHTING') return
 
-    const latestImpact = impacts[impacts.length - 1]
-    if (!latestImpact || latestImpact.id === lastImpactId.current) return
-
-    lastImpactId.current = latestImpact.id
-
-    const isCritical = latestImpact.strength > 0.85
+    const opponentHp = useGameStore.getState().opponentHp
+    const isCritical = impact.strength > 0.85
     const damage = Math.round((lastHp.current - opponentHp) * 10) / 10
 
     // Position à l'écran (convertir de -1,1 vers pixels)
-    const screenX = ((latestImpact.hitPoint[0] + 1) / 2) * window.innerWidth
-    const screenY = ((1 - latestImpact.hitPoint[1]) / 2) * window.innerHeight
+    const screenX = ((impact.hitPoint[0] + 1) / 2) * window.innerWidth
+    const screenY = ((1 - impact.hitPoint[1]) / 2) * window.innerHeight
 
     const newEffects: ScreenEffect[] = []
 
@@ -67,7 +63,7 @@ export function ImpactOverlay() {
     })
 
     // Texte d'impact (seulement pour les coups forts)
-    if (latestImpact.strength > 0.4) {
+    if (impact.strength > 0.4) {
       const texts = isCritical ? CRITICAL_TEXTS : IMPACT_TEXTS
       const text = texts[Math.floor(Math.random() * texts.length)]
 
@@ -97,7 +93,7 @@ export function ImpactOverlay() {
 
     setEffects((prev) => [...prev, ...newEffects])
     lastHp.current = opponentHp
-  }, [impacts, opponentHp, gameState])
+  }, []))
 
   // Nettoyer les vieux effets
   useEffect(() => {

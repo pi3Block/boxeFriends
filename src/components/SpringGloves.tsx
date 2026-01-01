@@ -1,6 +1,5 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useControls, folder } from 'leva'
 import {
@@ -8,7 +7,7 @@ import {
   COLLISION_GROUPS,
   type SoftBodyState,
 } from '../hooks/useAmmoPhysics'
-import { useImpactStore } from '../stores'
+import { ImpactManager } from '../stores'
 
 /**
  * Génère les points d'un ressort hélicoïdal
@@ -59,7 +58,6 @@ interface SpringGlovesProps {
  */
 export function SpringGloves({ softBodyState }: SpringGlovesProps) {
   const { camera, gl, size } = useThree()
-  const addImpact = useImpactStore((s) => s.addImpact)
 
   // Hook Ammo.js unifié - utilise le monde partagé
   const {
@@ -85,23 +83,49 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
   const [rightCharging, setRightCharging] = useState(false)
   const [initialized, setInitialized] = useState(false)
 
-  // Positions pour les ressorts visuels
-  const [leftGlovePos, setLeftGlovePos] = useState(new THREE.Vector3(-0.8, -0.3, 2.5))
-  const [rightGlovePos, setRightGlovePos] = useState(new THREE.Vector3(0.8, -0.3, 2.5))
+  // Positions pour les ressorts visuels (refs pour éviter les re-renders)
+  const leftGlovePosRef = useRef(new THREE.Vector3(-0.8, -0.3, 2.5))
+  const rightGlovePosRef = useRef(new THREE.Vector3(0.8, -0.3, 2.5))
 
   // Positions d'ancrage
   const leftAnchorPos = useMemo(() => new THREE.Vector3(-1.0, -0.5, 4.0), [])
   const rightAnchorPos = useMemo(() => new THREE.Vector3(1.0, -0.5, 4.0), [])
 
-  // Points des ressorts hélicoïdaux
-  const leftSpringPoints = useMemo(
-    () => generateSpringPoints(leftAnchorPos, leftGlovePos, 10, 0.05),
-    [leftAnchorPos, leftGlovePos]
-  )
-  const rightSpringPoints = useMemo(
-    () => generateSpringPoints(rightAnchorPos, rightGlovePos, 10, 0.05),
-    [rightAnchorPos, rightGlovePos]
-  )
+  // Géométries pré-allouées pour les ressorts hélicoïdaux
+  const SPRING_SEGMENTS = 64
+  const leftSpringGeometry = useMemo(() => {
+    const initialPoints = generateSpringPoints(leftAnchorPos, leftGlovePosRef.current, 10, 0.05, SPRING_SEGMENTS)
+    const positions = new Float32Array(initialPoints.length * 3)
+    initialPoints.forEach((p, i) => {
+      positions[i * 3] = p.x
+      positions[i * 3 + 1] = p.y
+      positions[i * 3 + 2] = p.z
+    })
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    return geo
+  }, [leftAnchorPos])
+
+  const rightSpringGeometry = useMemo(() => {
+    const initialPoints = generateSpringPoints(rightAnchorPos, rightGlovePosRef.current, 10, 0.05, SPRING_SEGMENTS)
+    const positions = new Float32Array(initialPoints.length * 3)
+    initialPoints.forEach((p, i) => {
+      positions[i * 3] = p.x
+      positions[i * 3 + 1] = p.y
+      positions[i * 3 + 2] = p.z
+    })
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    return geo
+  }, [rightAnchorPos])
+
+  // Materials pour les ressorts (refs pour mise à jour directe de la couleur)
+  const leftSpringMaterial = useMemo(() => new THREE.LineBasicMaterial({ color: 0x888888, linewidth: 3 }), [])
+  const rightSpringMaterial = useMemo(() => new THREE.LineBasicMaterial({ color: 0x888888, linewidth: 3 }), [])
+
+  // Objets Line pré-alloués
+  const leftSpringLine = useMemo(() => new THREE.Line(leftSpringGeometry, leftSpringMaterial), [leftSpringGeometry, leftSpringMaterial])
+  const rightSpringLine = useMemo(() => new THREE.Line(rightSpringGeometry, rightSpringMaterial), [rightSpringGeometry, rightSpringMaterial])
 
   // Contrôles Leva
   const springControls = useControls('Spring Gloves', {
@@ -307,6 +331,20 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
     }
   }, [initialized, getMousePosition3D, releaseGlove, gl])
 
+  // Fonction helper pour mettre à jour la géométrie du ressort (évite les allocations)
+  const updateSpringGeometry = useCallback((
+    geometry: THREE.BufferGeometry,
+    anchorPos: THREE.Vector3,
+    glovePos: THREE.Vector3
+  ) => {
+    const points = generateSpringPoints(anchorPos, glovePos, 10, 0.05, SPRING_SEGMENTS)
+    const positions = geometry.attributes.position as THREE.BufferAttribute
+    points.forEach((p, i) => {
+      positions.setXYZ(i, p.x, p.y, p.z)
+    })
+    positions.needsUpdate = true
+  }, [])
+
   // Boucle de rendu (pas de stepSimulation ici, c'est fait dans useAmmoPhysics.updatePhysics)
   useFrame(() => {
     if (!initialized) return
@@ -319,17 +357,29 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
       pullGlove('right-glove', mousePos.current)
     }
 
-    // Synchroniser les meshes
+    // Synchroniser les meshes et mettre à jour les positions refs
     if (leftGloveRef.current) {
       syncRigidBodyMesh('left-glove', leftGloveRef.current)
       const pos = getRigidBodyPosition('left-glove')
-      if (pos) setLeftGlovePos(pos.clone())
+      if (pos) {
+        leftGlovePosRef.current.copy(pos)
+        // Mettre à jour la géométrie du ressort directement
+        updateSpringGeometry(leftSpringGeometry, leftAnchorPos, pos)
+        // Mettre à jour la couleur du ressort
+        leftSpringMaterial.color.setHex(leftCharging ? 0xff6600 : 0x888888)
+      }
     }
 
     if (rightGloveRef.current) {
       syncRigidBodyMesh('right-glove', rightGloveRef.current)
       const pos = getRigidBodyPosition('right-glove')
-      if (pos) setRightGlovePos(pos.clone())
+      if (pos) {
+        rightGlovePosRef.current.copy(pos)
+        // Mettre à jour la géométrie du ressort directement
+        updateSpringGeometry(rightSpringGeometry, rightAnchorPos, pos)
+        // Mettre à jour la couleur du ressort
+        rightSpringMaterial.color.setHex(rightCharging ? 0xff6600 : 0x888888)
+      }
     }
 
     // Détection d'impact avec soft bodies
@@ -345,8 +395,8 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
         if (speed > 5) {
           const impactForce = Math.min(speed * 0.1, 1)
 
-          // Ajouter l'impact visuel
-          addImpact([pos.x, pos.y, pos.z], impactForce)
+          // Ajouter l'impact visuel (ImpactManager - pas de re-render)
+          ImpactManager.addImpact([pos.x, pos.y, pos.z], impactForce)
 
           // Appliquer l'impulsion à TOUS les soft bodies du monde
           // Forces réduites pour éviter les déformations excessives
@@ -397,22 +447,14 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
 
   return (
     <group>
-      {/* Ressort hélicoïdal gauche */}
-      <Line
-        points={leftSpringPoints}
-        color={leftCharging ? '#ff6600' : '#888888'}
-        lineWidth={3}
-      />
+      {/* Ressort hélicoïdal gauche (primitive pour éviter re-render) */}
+      <primitive object={leftSpringLine} />
 
-      {/* Ressort hélicoïdal droit */}
-      <Line
-        points={rightSpringPoints}
-        color={rightCharging ? '#ff6600' : '#888888'}
-        lineWidth={3}
-      />
+      {/* Ressort hélicoïdal droit (primitive pour éviter re-render) */}
+      <primitive object={rightSpringLine} />
 
       {/* Poing gauche */}
-      <mesh ref={leftGloveRef} position={leftGlovePos.toArray()}>
+      <mesh ref={leftGloveRef} position={leftGlovePosRef.current.toArray()}>
         <sphereGeometry args={[springControls.gloveSize, 16, 16]} />
         <meshStandardMaterial
           color={getGloveColor(leftCharging)}
@@ -422,7 +464,7 @@ export function SpringGloves({ softBodyState }: SpringGlovesProps) {
       </mesh>
 
       {/* Poing droit */}
-      <mesh ref={rightGloveRef} position={rightGlovePos.toArray()}>
+      <mesh ref={rightGloveRef} position={rightGlovePosRef.current.toArray()}>
         <sphereGeometry args={[springControls.gloveSize, 16, 16]} />
         <meshStandardMaterial
           color={getGloveColor(rightCharging)}

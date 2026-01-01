@@ -3,26 +3,19 @@ import { useGameStore, useHandTrackingStore } from '../stores'
 import { FaceCropper } from './FaceCropper'
 import { PunchButtons } from './PunchButtons'
 import { SettingsPanel } from './SettingsPanel'
+import { GameHUD } from './GameHUD'
+import { ResultsScreen } from './ResultsScreen'
 import { alignFace } from '../utils/FaceAligner'
-
-// Legacy imports - kept for documentation
-// import { CharacterSelector } from './CharacterSelector'
-// import { ToolBar } from './ToolBar'
-// import { PunchZoneIndicator } from './PunchZoneIndicator'
-// import { OpponentSelector } from './OpponentSelector'
 
 /**
  * Composant UI overlay (HTML au-dessus du Canvas)
  */
 export function UI() {
   const gameState = useGameStore((state) => state.gameState)
-  const playerHp = useGameStore((state) => state.playerHp)
-  const opponentHp = useGameStore((state) => state.opponentHp)
   const opponentTexture = useGameStore((state) => state.opponentTexture)
   const isCustomTexture = useGameStore((state) => state.isCustomTexture)
   const setTexture = useGameStore((state) => state.setTexture)
   const startFight = useGameStore((state) => state.startFight)
-  const resetGame = useGameStore((state) => state.resetGame)
 
   // Hand tracking store
   const isCameraEnabled = useHandTrackingStore((state) => state.isCameraEnabled)
@@ -164,11 +157,19 @@ export function UI() {
                   ? 'animate-pulse border-gray-500'
                   : 'border-white/80 group-hover:border-white group-hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]'
               }`}>
-                <img
-                  src={opponentTexture}
-                  alt="Opponent"
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-                />
+                {opponentTexture ? (
+                  <img
+                    src={opponentTexture}
+                    alt="Opponent"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-800 to-amber-950">
+                    <svg className="h-16 w-16 text-amber-600/50" fill="currentColor" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" />
+                    </svg>
+                  </div>
+                )}
               </div>
               {/* Overlay on hover/tap */}
               {!isProcessing && (
@@ -229,13 +230,15 @@ export function UI() {
         </div>
       )}
 
-      {/* FIGHTING - HUD */}
-      {gameState === 'FIGHTING' && (
+      {/* COUNTDOWN et FIGHTING - HUD */}
+      {(gameState === 'COUNTDOWN' || gameState === 'FIGHTING') && (
         <>
-          {/* Indicateur de tracking caméra + recalibrer (coin supérieur droit) */}
-          {isCameraEnabled && (
-            <div className="pointer-events-auto absolute right-4 top-16 flex items-center gap-2">
-              {/* Bouton recalibrer */}
+          {/* GameHUD (timer, score, countdown) */}
+          <GameHUD />
+
+          {/* Indicateur de tracking caméra (en bas du score, donc à droite) */}
+          {isCameraEnabled && gameState === 'FIGHTING' && (
+            <div className="pointer-events-auto absolute right-4 top-28 flex items-center gap-2">
               {isCalibrated && (
                 <button
                   onClick={resetCalibration}
@@ -244,7 +247,6 @@ export function UI() {
                   Recalibrer
                 </button>
               )}
-              {/* Statut tracking */}
               <div className="flex items-center gap-2 rounded-full bg-black/50 px-3 py-1">
                 <span
                   className={`h-2 w-2 rounded-full ${
@@ -258,96 +260,23 @@ export function UI() {
             </div>
           )}
 
-          {/* Barre de vie adversaire (top) */}
-          <div className="p-4">
-            <div className="mx-auto w-full max-w-md">
-              <div className="mb-1 text-center text-sm font-bold text-white drop-shadow-lg">
-                ADVERSAIRE
-              </div>
-              <div className="h-6 w-full overflow-hidden rounded-full bg-gray-800/80 backdrop-blur-sm">
-                <div
-                  className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-200"
-                  style={{ width: `${opponentHp}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Boutons de punch centrés */}
-          <div className="mb-4">
-            <PunchButtons />
-          </div>
-
-          {/* Barre de vie joueur (bottom) */}
-          <div className="p-4 pb-6">
-            <div className="mx-auto w-full max-w-md">
-              <div className="h-4 w-full overflow-hidden rounded-full bg-gray-800/80 backdrop-blur-sm">
-                <div
-                  className="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-200"
-                  style={{ width: `${playerHp}%` }}
-                />
-              </div>
-              <div className="mt-1 text-center text-xs font-bold text-white drop-shadow-lg">
-                VOUS
-              </div>
+          {/* Boutons de punch centrés (seulement en FIGHTING) */}
+          {gameState === 'FIGHTING' && (
+            <div className="mb-20 sm:mb-6">
+              <PunchButtons />
             </div>
-          </div>
+          )}
 
-          {/* Panneau de paramètres (bas droite) */}
-          <SettingsPanel />
+          {/* Panneau de paramètres (bas droite) - seulement en FIGHTING */}
+          {gameState === 'FIGHTING' && <SettingsPanel />}
         </>
       )}
 
-      {/* KO - Modern Victory/Defeat Screen */}
-      {gameState === 'KO' && (
-        <div className="pointer-events-auto flex flex-1 flex-col items-center justify-center gap-8 bg-gradient-to-b from-black/90 via-black/80 to-black/90 px-6">
-          {/* KO Text with animation */}
-          <div className="relative">
-            <h1 className="animate-pulse bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-7xl font-black text-transparent sm:text-8xl">
-              K.O.!
-            </h1>
-            {/* Glow effect */}
-            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 opacity-30 blur-2xl" />
-          </div>
-
-          {/* Result */}
-          {opponentHp <= 0 && (
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-3xl font-black uppercase tracking-wider text-green-400 sm:text-4xl">
-                Victoire!
-              </p>
-              <p className="text-gray-400">Tu l'as bien tapé!</p>
-            </div>
-          )}
-
-          {playerHp <= 0 && (
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-3xl font-black uppercase tracking-wider text-red-400 sm:text-4xl">
-                Défaite...
-              </p>
-              <p className="text-gray-400">Réessaie!</p>
-            </div>
-          )}
-
-          {/* Replay Button */}
-          <button
-            onClick={resetGame}
-            className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 px-10 py-4 text-xl font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-500/30 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/40 active:scale-95"
-          >
-            {/* Shine effect */}
-            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-            <span className="relative flex items-center gap-2">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Rejouer
-            </span>
-          </button>
-        </div>
-      )}
+      {/* Écran de résultats */}
+      <ResultsScreen />
 
       {/* Modal de crop */}
       {showCropper && rawImageUrl && (

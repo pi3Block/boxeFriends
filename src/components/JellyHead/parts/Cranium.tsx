@@ -3,7 +3,7 @@ import { useFrame, ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import { useShallow } from 'zustand/react/shallow'
-import { useImpactStore, useGameStore } from '../../../stores'
+import { ImpactManager, useGameStore } from '../../../stores'
 import { useCartoonEffectsStore } from '../../../stores/useCartoonEffectsStore'
 import { HitZone } from '../../../physics'
 
@@ -225,10 +225,7 @@ export function Cranium({ textureUrl, wobbleIntensity = 0, onHit }: CraniumProps
   const meshRef = useRef<THREE.Mesh>(null)
   const materialRef = useRef<CustomShaderMaterial | null>(null)
 
-  // Stores
-  const addImpact = useImpactStore((s) => s.addImpact)
-  const impacts = useImpactStore((s) => s.impacts)
-  const tick = useImpactStore((s) => s.tick)
+  // Stores - ImpactManager utilisé directement (pas de subscription React)
   const textureSettings = useGameStore(
     useShallow((s) => ({ zoom: s.textureZoom, offsetX: s.textureOffsetX, offsetY: s.textureOffsetY }))
   )
@@ -265,8 +262,8 @@ export function Cranium({ textureUrl, wobbleIntensity = 0, onHit }: CraniumProps
       intensity: baseIntensity,
     })
 
-    // Ajouter l'impact au store global (pour compatibilité)
-    addImpact(localPoint.toArray() as [number, number, number], baseIntensity)
+    // Ajouter l'impact au système global (ImpactManager - pas de re-render)
+    ImpactManager.addImpact(localPoint.toArray() as [number, number, number], baseIntensity)
 
     // Stocker l'impact local pour le shader
     localImpactsRef.current.push({
@@ -355,7 +352,8 @@ export function Cranium({ textureUrl, wobbleIntensity = 0, onHit }: CraniumProps
 
   // Animation loop
   useFrame((_, delta) => {
-    tick(delta)
+    // Tick impacts - mutation directe, pas de set() Zustand
+    ImpactManager.tick(delta)
 
     if (!materialRef.current) return
 
@@ -394,13 +392,14 @@ export function Cranium({ textureUrl, wobbleIntensity = 0, onHit }: CraniumProps
     })
 
     // Compléter avec les impacts globaux si on a de la place
-    impacts.forEach((impact) => {
-      if (impactIndex < 5) {
-        hitPointsArray[impactIndex]?.set(...impact.hitPoint)
-        strengthsArray[impactIndex] = impact.strength
-        impactIndex++
-      }
-    })
+    // Lecture directe depuis ImpactManager (pas de re-render React)
+    const globalImpacts = ImpactManager.getImpacts()
+    for (const impact of globalImpacts) {
+      if (impactIndex >= 5) break
+      hitPointsArray[impactIndex]?.set(...impact.hitPoint)
+      strengthsArray[impactIndex] = impact.strength
+      impactIndex++
+    }
 
     uniforms.uActiveImpacts.value = impactIndex
   })

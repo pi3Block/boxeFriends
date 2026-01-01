@@ -4,7 +4,8 @@ import { useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { useControls, folder } from 'leva'
 import { useAmmoPhysics, SoftBodyState } from '../hooks/useAmmoPhysics'
-import { useImpactStore } from '../stores'
+import { ImpactManager } from '../stores'
+import { useImpactListener } from '../hooks/useImpactListener'
 
 /**
  * Configuration de la tête Little Mac
@@ -31,7 +32,6 @@ export function LittleMacOpponent() {
   const meshRef = useRef<THREE.Mesh>(null)
   const softBodyStateRef = useRef<SoftBodyState | null>(null)
   const initAttemptedRef = useRef(false)
-  const lastImpactIdRef = useRef<number>(-1)
 
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -55,8 +55,6 @@ export function LittleMacOpponent() {
     removeSoftBody,
   } = useAmmoPhysics()
 
-  // Store des impacts
-  const impacts = useImpactStore((s) => s.impacts)
 
   // Contrôles Leva
   const controls = useControls('Little Mac Head', {
@@ -114,34 +112,35 @@ export function LittleMacOpponent() {
     }
   }, [isReady, createEllipsoid, syncEllipsoidToMesh, removeSoftBody, controls])
 
-  // Traiter les impacts
-  useEffect(() => {
-    if (impacts.length === 0 || !softBodyStateRef.current) return
+  // Ref pour les controls (pour accès dans le callback)
+  const controlsRef = useRef(controls)
+  controlsRef.current = controls
 
-    const latest = impacts[impacts.length - 1]
-    if (!latest || latest.id === lastImpactIdRef.current) return
+  // Traiter les impacts via callback (pas de re-render React)
+  useImpactListener((impact) => {
+    if (!softBodyStateRef.current) return
 
-    lastImpactIdRef.current = latest.id
+    const ctrl = controlsRef.current
 
     // Convertir le point d'impact en coordonnées world
     const hitPosition = new THREE.Vector3(
-      latest.hitPoint[0] * controls.radiusX,
-      latest.hitPoint[1] * controls.radiusY + HEAD_CONFIG.positionY,
-      latest.hitPoint[2] * controls.radiusZ
+      impact.hitPoint[0] * ctrl.radiusX,
+      impact.hitPoint[1] * ctrl.radiusY + HEAD_CONFIG.positionY,
+      impact.hitPoint[2] * ctrl.radiusZ
     )
 
     // Force de l'impact
     const force = new THREE.Vector3(
-      -latest.hitPoint[0] * 8,
-      -latest.hitPoint[1] * 2,
-      -latest.strength * 20
+      -impact.hitPoint[0] * 8,
+      -impact.hitPoint[1] * 2,
+      -impact.strength * 20
     )
 
-    const radius = 0.4 + latest.strength * 0.4
+    const radius = 0.4 + impact.strength * 0.4
 
-    console.log(`[LittleMac] Impact! strength=${latest.strength.toFixed(2)}`)
+    console.log(`[LittleMac] Impact! strength=${impact.strength.toFixed(2)}`)
     applySoftBodyImpulse(softBodyStateRef.current, hitPosition, force, radius)
-  }, [impacts, applySoftBodyImpulse, controls.radiusX, controls.radiusY, controls.radiusZ])
+  })
 
   // Boucle de mise à jour physique
   useFrame((_, delta) => {

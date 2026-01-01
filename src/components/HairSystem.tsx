@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useImpactStore } from '../stores'
+import { ImpactManager } from '../stores'
 
 /**
  * Configuration des cheveux
@@ -52,7 +52,6 @@ function createHairStrandGeometry(): THREE.BufferGeometry {
  */
 export function HairSystem({ parentObject }: HairSystemProps) {
   const hairGroupRef = useRef<THREE.Group | null>(null)
-  const impacts = useImpactStore((state) => state.impacts)
 
   // Créer le groupe de cheveux une seule fois
   useEffect(() => {
@@ -114,6 +113,8 @@ export function HairSystem({ parentObject }: HairSystemProps) {
     if (!hairGroupRef.current) return
 
     const time = performance.now() * 0.001
+    // Lecture directe depuis ImpactManager (pas de re-render React)
+    const impacts = ImpactManager.getImpacts()
 
     // Oscillation naturelle + réaction aux impacts
     hairGroupRef.current.children.forEach((strand, i) => {

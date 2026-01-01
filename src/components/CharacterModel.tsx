@@ -4,7 +4,7 @@ import { useGLTF, useTexture, Sphere } from '@react-three/drei'
 import type { Group, Mesh, SkinnedMesh, Texture } from 'three'
 import * as THREE from 'three'
 import { useShallow } from 'zustand/react/shallow'
-import { useGameStore, useImpactStore, useJellyStore, type JellyParams, type TextureSettings } from '../stores'
+import { useGameStore, ImpactManager, useJellyStore, type JellyParams, type TextureSettings } from '../stores'
 import { useSelectedCharacter } from '../stores/useCharacterStore'
 import { DeformableFaceMaterial } from '../shaders'
 import { FaceOpponent } from './FaceOpponent'
@@ -153,8 +153,7 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
 
   const gameState = useGameStore((state) => state.gameState)
   const opponentHp = useGameStore((state) => state.opponentHp)
-  const impacts = useImpactStore((state) => state.impacts)
-  const addImpact = useImpactStore((state) => state.addImpact)
+  // ImpactManager utilisé directement (pas de subscription React)
   const jellyParams = useJellyStore()
   const textureSettings = useGameStore(
     useShallow((s) => ({ zoom: s.textureZoom, offsetX: s.textureOffsetX, offsetY: s.textureOffsetY }))
@@ -226,8 +225,8 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
       states.body.velocity.add(impactDir.clone().multiplyScalar(impactForce * 0.4))
     }
 
-    // Ajouter à l'impact store pour le shader de déformation
-    addImpact([hitPoint.x, hitPoint.y, hitPoint.z], 0.8)
+    // Ajouter au système d'impact pour le shader de déformation
+    ImpactManager.addImpact([hitPoint.x, hitPoint.y, hitPoint.z], 0.8)
   }
 
   const handlePointerUp = () => {
@@ -242,7 +241,8 @@ function SphereOpponent({ textureUrl }: { textureUrl?: string | null }) {
     const dt = Math.min(delta, 0.05) // Cap delta pour stabilité
     const states = springStates.current
 
-    // Détecter nouvel impact depuis le système de punch
+    // Détecter nouvel impact depuis le système de punch (lecture directe)
+    const impacts = ImpactManager.getImpacts()
     if (impacts.length > 0) {
       const latestImpact = impacts[impacts.length - 1]
       if (latestImpact && latestImpact.id !== lastImpactId.current) {
@@ -478,7 +478,7 @@ function GLBOpponent({ modelPath, textureUrl, scale = 1, headBone }: GLBOpponent
 
   const gameState = useGameStore((state) => state.gameState)
   const opponentHp = useGameStore((state) => state.opponentHp)
-  const impacts = useImpactStore((state) => state.impacts)
+  // ImpactManager utilisé directement dans useFrame (pas de subscription)
 
   // Cloner la scène pour éviter les conflits
   const clonedScene = useMemo(() => scene.clone(), [scene])
@@ -558,6 +558,8 @@ function GLBOpponent({ modelPath, textureUrl, scale = 1, headBone }: GLBOpponent
       groupRef.current.rotation.y = Math.sin(Date.now() * 0.001) * 0.1
     }
 
+    // Lecture directe depuis ImpactManager (pas de re-render)
+    const impacts = ImpactManager.getImpacts()
     if (impacts.length > 0) {
       const totalStrength = impacts.reduce((sum, i) => sum + i.strength, 0)
       groupRef.current.position.z = -totalStrength * 0.3

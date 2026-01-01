@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import * as THREE from 'three'
-import { useImpactStore } from '../stores'
+import { ImpactManager } from '../stores'
 
 /**
  * Vertex shader GLSL avec effet wobble/jelly + déformation multi-impact
@@ -304,8 +304,7 @@ export function DeformableFaceMaterial({
 }: DeformableFaceMaterialProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const materialRef = useRef<any>(null)
-  const impacts = useImpactStore((state) => state.impacts)
-  const tick = useImpactStore((state) => state.tick)
+  // ImpactManager utilisé directement dans useFrame (pas de subscription React)
 
   // Créer les uniforms une seule fois
   const hitPointsArray = useMemo(() => [
@@ -347,8 +346,8 @@ export function DeformableFaceMaterial({
 
   // Mettre à jour les uniforms à chaque frame
   useFrame((_, delta) => {
-    // Mettre à jour le decay des impacts
-    tick(delta)
+    // Mettre à jour le decay des impacts (mutation directe, pas de re-render)
+    ImpactManager.tick(delta)
 
     if (!materialRef.current) return
 
@@ -361,7 +360,8 @@ export function DeformableFaceMaterial({
       strengthsArray[i] = 0
     }
 
-    // Remplir avec les impacts actifs
+    // Remplir avec les impacts actifs (lecture directe)
+    const impacts = ImpactManager.getImpacts()
     impacts.forEach((impact, i) => {
       if (i < 5) {
         hitPointsArray[i]?.set(...impact.hitPoint)

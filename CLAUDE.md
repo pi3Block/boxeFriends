@@ -393,3 +393,279 @@ Reference: [btSoftBody.h on GitHub](https://github.com/kripken/ammo.js/blob/main
 
 ### Reference Demo
 [Three.js Ammo Volume Example](https://threejs.org/examples/physics_ammo_volume.html)
+
+## Performance Patterns Découverts (Décembre 2024)
+
+### ImpactManager - Singleton sans Re-renders
+
+Le système d'impacts a été migré de Zustand (`useImpactStore`) vers un singleton JavaScript (`ImpactManager`) pour éviter les re-renders React.
+
+**Problème initial:**
+```typescript
+// ❌ MAUVAIS: useImpactStore.tick() appelait set() chaque frame
+// → 12+ composants subscribed re-rendaient à 60fps
+tick: (deltaTime) => set((state) => ({
+  impacts: state.impacts.filter(i => i.strength > 0.01)
+}))
+```
+
+**Solution:**
+```typescript
+// ✅ BON: ImpactManager - mutation directe, pas de React
+// src/systems/ImpactManager.ts
+class ImpactManagerClass {
+  private impacts: Impact[] = []
+  private listeners: Set<ImpactListener> = new Set()
+
+  tick(deltaTime: number): void {
+    // Mutation directe - pas de set(), pas de re-render
+    for (let i = this.impacts.length - 1; i >= 0; i--) {
+      this.impacts[i].strength -= DECAY_RATE * deltaTime
+      if (this.impacts[i].strength <= MIN_STRENGTH) {
+        this.impacts.splice(i, 1)
+      }
+    }
+  }
+
+  subscribe(listener: ImpactListener): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+}
+export const ImpactManager = new ImpactManagerClass()
+```
+
+**Hook pour écouter les impacts:**
+```typescript
+// src/hooks/useImpactListener.ts
+export function useImpactListener(onNewImpact: (impact: Impact) => void): void {
+  const callbackRef = useRef(onNewImpact)
+  callbackRef.current = onNewImpact
+  useEffect(() => {
+    return ImpactManager.subscribe((impact) => callbackRef.current(impact))
+  }, [])
+}
+```
+
+### Animations → useRef (pas useState)
+
+Les animations qui changent fréquemment doivent utiliser `useRef` au lieu de `useState` pour éviter les re-renders.
+
+**Problème initial (AmmoVolumeDemo.tsx):**
+```typescript
+// ❌ MAUVAIS: useState pour animations = re-render à chaque changement
+const [leftPunchAnim, setLeftPunchAnim] = useState<PunchAnimation | null>(null)
+
+// Dans useCallback avec dépendances:
+const updateGloves = useCallback(() => {
+  // ...
+  if (progress >= 1) setAnim(null)  // ← DÉCLENCHE RE-RENDER!
+}, [leftPunchAnim, rightPunchAnim])  // ← FONCTION RECRÉÉE!
+```
+
+**Solution:**
+```typescript
+// ✅ BON: useRef pour animations = mutation directe
+const leftPunchAnimRef = useRef<PunchAnimation | null>(null)
+
+const startPunch = useCallback((side, type) => {
+  leftPunchAnimRef.current = { type, side, ... }  // Mutation directe
+}, [])  // Pas de dépendances!
+
+const updatePunchAnimation = useCallback((
+  animRef: React.MutableRefObject<PunchAnimation | null>,
+  outVec: THREE.Vector3
+): boolean => {
+  if (progress >= 1) {
+    animRef.current = null  // Mutation directe, pas de re-render
+    return false
+  }
+  // ...
+}, [])
+```
+
+**Pour les couleurs/matériaux:**
+```typescript
+// ✅ BON: Mutation directe du material dans useFrame
+const updateGloveMaterial = useCallback((mesh, anim) => {
+  const material = mesh.material as THREE.MeshStandardMaterial
+  material.color.copy(anim ? GLOVE_COLORS.jab : GLOVE_COLORS.rest)
+  material.emissive.copy(anim ? GLOVE_COLORS.emissiveActive : GLOVE_COLORS.emissiveRest)
+}, [])
+```
+
+### Règle Générale
+
+Pour tout état qui change fréquemment (>1x/sec) dans un composant R3F:
+1. **Utiliser `useRef`** au lieu de `useState`
+2. **Lecture directe** dans useFrame: `animRef.current`
+3. **Mutation directe** des objets Three.js: `mesh.position.set()`, `material.color.copy()`
+4. **Pas de dépendances** dans useCallback pour les valeurs mutées
+5. **Pré-allouer les objets** avec useMemo: `const color = useMemo(() => new THREE.Color(), [])`
+
+## PhysicsSceneManager - Gestion Centralisée Ammo.js
+
+Singleton pour gérer tous les objets physiques avec cleanup automatique par catégorie.
+
+**Fichier:** `src/systems/PhysicsSceneManager.ts`
+
+### Catégories Utilisées
+- `'environment'` - Sol, plafond, murs
+- `'opponent'` - Soft body adversaire, corde
+- `'gloves'` - Gants (kinematic ou physics)
+- `'projectiles'` - Balles lancées
+
+### Usage Basique
+```typescript
+import { PhysicsSceneManager } from '../stores'
+
+// Initialisation (une seule fois)
+await PhysicsSceneManager.initialize()
+
+// Ajouter des objets
+PhysicsSceneManager.addRigidBody('left-glove', body, mesh, 'gloves')
+PhysicsSceneManager.addSoftBody('opponent', softBody, mesh, indexAssociation, 'opponent')
+PhysicsSceneManager.addConstraint('left-spring', constraint, 'gloves')
+
+// Supprimer par ID
+PhysicsSceneManager.removeRigidBody('left-glove')
+
+// Cleanup par catégorie (switch de mode)
+PhysicsSceneManager.clearCategory('gloves')
+
+// Debug
+PhysicsSceneManager.logState()
+```
+
+### Hook React
+```typescript
+import { usePhysicsCategory } from '../hooks/usePhysicsScene'
+
+function PhysicsGloves() {
+  // Cleanup automatique au démontage
+  const { isReady, addRigidBody, addConstraint, clear } = usePhysicsCategory('gloves')
+
+  useEffect(() => {
+    if (!isReady) return
+    addRigidBody('left-glove', leftBody, leftMesh)
+    addConstraint('left-spring', leftSpring)
+  }, [isReady])
+
+  // ...
+}
+```
+
+### Avantages
+- **Cleanup centralisé**: `clearCategory('gloves')` supprime tout en un appel
+- **Pas de variables globales**: Plus de `rigidBodiesList`, `softBodiesList` éparpillées
+- **Tracking par ID**: Debug facile avec `logState()`
+- **Réutilisable**: Un seul monde physique partagé
+
+## OpponentManager - Gestion du Cycle de Vie des Adversaires
+
+Singleton pour gérer la création, destruction et transition des adversaires avec cleanup automatique des ressources Three.js.
+
+**Fichier:** `src/systems/OpponentManager.ts`
+
+### Problème Résolu
+Lors des changements d'adversaire, les ressources n'étaient pas correctement nettoyées:
+- Geometries Three.js non disposées (GPU memory leak)
+- Matériaux et textures orphelins
+- Soft bodies/rigid bodies restant dans le monde physique
+- Listes globales (`rigidBodiesList`, `softBodiesList`) non vidées
+
+### Architecture
+
+```
+AmmoVolumeDemo
+       ↓
+OpponentManager.setOpponent(type, mesh, options)
+       ↓
+   ┌───┴───┐
+   │       │
+cleanup() │ trackMesh()
+   │       │
+   ↓       ↓
+PhysicsSceneManager    Three.js Resources
+(physics bodies)       (geometry, material, texture)
+```
+
+### Usage Basique
+```typescript
+import { OpponentManager } from '../stores'
+
+// Initialisation (une seule fois, avec la scène)
+OpponentManager.initialize(scene)
+
+// Définir un adversaire (cleanup automatique de l'ancien)
+await OpponentManager.setOpponent('sphere', mesh, {
+  softBody: softBodyInstance,
+  anchor: { id: 'opponent-anchor', body: anchorBody },
+  ropes: [{ id: 'rope-1', body: ropeBody, line: ropeLine }]
+})
+
+// Cleanup manuel si nécessaire
+await OpponentManager.cleanup()
+
+// Debug
+OpponentManager.logState()
+```
+
+### Hook React
+```typescript
+import { useOpponent } from '../hooks/useOpponent'
+
+function MyComponent() {
+  const {
+    isReady,
+    currentType,
+    setOpponent,
+    cleanup,
+    trackMesh,
+    replaceGeometry
+  } = useOpponent()
+
+  useEffect(() => {
+    if (!isReady) return
+
+    // Créer un adversaire
+    const geometry = new THREE.IcosahedronGeometry(1.5, 5)
+    const mesh = new THREE.Mesh(geometry, material)
+    setOpponent('sphere', mesh)
+
+    // Cleanup automatique au démontage
+    return () => cleanup()
+  }, [isReady])
+}
+```
+
+### Intégration avec PhysicsSceneManager
+
+OpponentManager utilise automatiquement PhysicsSceneManager pour les catégories:
+- `'opponent'` - Soft body principal, ancre
+- `'opponent-rope'` - Cordes attachées
+
+```typescript
+// Lors du cleanup:
+PhysicsSceneManager.clearCategory('opponent')
+PhysicsSceneManager.clearCategory('opponent-rope')
+```
+
+### Cleanup des Ressources Three.js
+
+OpponentManager track automatiquement et dispose:
+- **BufferGeometry**: `geometry.dispose()`
+- **Materials**: `material.dispose()`
+- **Textures**: Toutes les maps (diffuse, normal, roughness, etc.)
+
+```typescript
+// Remplacement de géométrie avec dispose automatique
+OpponentManager.replaceGeometry(newGeometry)
+// → L'ancienne géométrie est automatiquement disposée
+```
+
+### Bonnes Pratiques
+1. **Toujours utiliser setOpponent** au lieu de créer manuellement les adversaires
+2. **Ne pas disposer manuellement** les ressources trackées - OpponentManager s'en charge
+3. **Utiliser replaceGeometry** quand on change juste la forme
+4. **Appeler logState()** pour debug en cas de fuite mémoire

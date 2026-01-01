@@ -1,7 +1,7 @@
-import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useMemo, useCallback } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useImpactStore } from '../stores'
+import { useImpactListener } from '../hooks/useImpactListener'
 
 /**
  * Configuration des particules d'impact
@@ -47,8 +47,6 @@ interface Particle {
 const POOL_SIZE = PARTICLE_CONFIG.count * 50
 
 export function ImpactEffects() {
-  const impacts = useImpactStore((state) => state.impacts)
-  const lastImpactId = useRef<number>(-1)
   const hitStopTime = useRef<number>(0)
   useThree() // Pour accéder au contexte Three.js
 
@@ -136,27 +134,20 @@ export function ImpactEffects() {
   }
 
 
-  // Détecter les nouveaux impacts
-  useEffect(() => {
-    if (impacts.length > 0) {
-      const latestImpact = impacts[impacts.length - 1]
-      if (latestImpact && latestImpact.id !== lastImpactId.current) {
-        lastImpactId.current = latestImpact.id
+  // Écouter les nouveaux impacts via callback (pas de re-render React)
+  useImpactListener(useCallback((impact) => {
+    // Spawner des particules
+    spawnParticles(impact.hitPoint, impact.strength)
 
-        // Spawner des particules
-        spawnParticles(latestImpact.hitPoint, latestImpact.strength)
+    // Déclencher le hit-stop si la force est suffisante
+    if (impact.strength > HITSTOP_CONFIG.threshold) {
+      const duration = impact.strength > 0.85
+        ? HITSTOP_CONFIG.criticalDuration
+        : HITSTOP_CONFIG.duration
 
-        // Déclencher le hit-stop si la force est suffisante
-        if (latestImpact.strength > HITSTOP_CONFIG.threshold) {
-          const duration = latestImpact.strength > 0.85
-            ? HITSTOP_CONFIG.criticalDuration
-            : HITSTOP_CONFIG.duration
-
-          hitStopTime.current = duration
-        }
-      }
+      hitStopTime.current = duration
     }
-  }, [impacts])
+  }, []))
 
   // Animation des particules (optimisée avec pooling - pas de filter())
   useFrame((_, delta) => {

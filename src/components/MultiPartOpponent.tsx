@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useControls, folder } from 'leva'
 import { useAmmoPhysics, SoftBodyState } from '../hooks/useAmmoPhysics'
-import { useImpactStore } from '../stores'
+import { useImpactListener } from '../hooks/useImpactListener'
 
 /**
  * Configuration du personnage multi-parties
@@ -78,7 +78,6 @@ export function MultiPartOpponent() {
 
   const [isInitialized, setIsInitialized] = useState(false)
   const initAttemptedRef = useRef(false)
-  const lastImpactIdRef = useRef<number>(-1)
 
   // Hook Ammo.js
   const {
@@ -96,8 +95,6 @@ export function MultiPartOpponent() {
     removeRigidBody,
   } = useAmmoPhysics()
 
-  // Impacts
-  const impacts = useImpactStore((s) => s.impacts)
 
   // Contrôles Leva
   const controls = useControls('Multi-Part Character', {
@@ -295,35 +292,31 @@ export function MultiPartOpponent() {
       anchorSoftBodyToRigid, findExtremeNodes, removeSoftBody, removeRigidBody,
       controls.headMass, controls.headPressure, controls.torsoMass, controls.torsoPressure])
 
-  // Traiter les impacts
-  useEffect(() => {
-    if (impacts.length === 0 || !partsRef.current.head) return
+  // Traiter les impacts via callback (pas de re-render React)
+  useImpactListener((impact) => {
+    if (!partsRef.current.head) return
 
-    const latest = impacts[impacts.length - 1]
-    if (!latest || latest.id === lastImpactIdRef.current) return
-    lastImpactIdRef.current = latest.id
-
-    // Appliquer l'impact sur la tête
-    const hitY = latest.hitPoint[1]
+    // Appliquer l'impact sur la tête ou le torse selon la position Y
+    const hitY = impact.hitPoint[1]
     const targetPart = hitY > 0.3 ? partsRef.current.head : partsRef.current.torso
 
     if (targetPart) {
       const hitPosition = new THREE.Vector3(
-        latest.hitPoint[0] * 0.8,
-        CHARACTER_CONFIG.baseY + CHARACTER_CONFIG.head.offsetY + latest.hitPoint[1] * 0.8,
-        CHARACTER_CONFIG.baseZ + latest.hitPoint[2] * 0.6
+        impact.hitPoint[0] * 0.8,
+        CHARACTER_CONFIG.baseY + CHARACTER_CONFIG.head.offsetY + impact.hitPoint[1] * 0.8,
+        CHARACTER_CONFIG.baseZ + impact.hitPoint[2] * 0.6
       )
 
       const force = new THREE.Vector3(
-        -latest.hitPoint[0] * 10,
-        -latest.hitPoint[1] * 3,
-        -latest.strength * 25
+        -impact.hitPoint[0] * 10,
+        -impact.hitPoint[1] * 3,
+        -impact.strength * 25
       )
 
       applySoftBodyImpulse(targetPart, hitPosition, force, 0.5)
       console.log(`[MultiPart] Impact on ${hitY > 0.3 ? 'head' : 'torso'}!`)
     }
-  }, [impacts, applySoftBodyImpulse])
+  })
 
   // Mise à jour de la corde (synchroniser la Line avec les nodes)
   useFrame((_, delta) => {

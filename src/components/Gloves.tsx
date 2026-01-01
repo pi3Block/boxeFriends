@@ -165,11 +165,11 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
   const gameState = useGameStore((state) => state.gameState)
   const { camera, size } = useThree()
 
-  // État visuel de profondeur (pour le feedback)
-  const [leftEmissive, setLeftEmissive] = useState(0)
-  const [rightEmissive, setRightEmissive] = useState(0)
-  const [leftScale, setLeftScale] = useState(1)
-  const [rightScale, setRightScale] = useState(1)
+  // État visuel de profondeur (refs pour éviter les re-renders dans useFrame)
+  const leftEmissiveRef = useRef(0)
+  const rightEmissiveRef = useRef(0)
+  const leftScaleRef = useRef(1)
+  const rightScaleRef = useRef(1)
 
   // État de suivi (mode tactile - alternance)
   const activeHand = useRef<'left' | 'right' | null>(null)
@@ -724,17 +724,40 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
 
     // === Feedback visuel de profondeur ===
     // Calculer l'échelle et l'émission basées sur la position Z
+    // Mise à jour directe via refs et mutation (pas de setState = pas de re-render)
     if (leftGloveRef.current) {
       const leftVisuals = calculateDepthVisuals(leftGloveRef.current.position.z)
       // Mise à jour lissée pour éviter les sauts
-      setLeftEmissive((prev) => prev + (leftVisuals.emissive - prev) * 0.3)
-      setLeftScale((prev) => prev + (leftVisuals.scale - prev) * 0.3)
+      leftEmissiveRef.current += (leftVisuals.emissive - leftEmissiveRef.current) * 0.3
+      leftScaleRef.current += (leftVisuals.scale - leftScaleRef.current) * 0.3
+      // Appliquer directement sur le groupe
+      leftGloveRef.current.scale.setScalar(leftScaleRef.current)
+      // Mettre à jour l'émissive sur tous les matériaux du groupe
+      leftGloveRef.current.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const material = (child as THREE.Mesh).material as THREE.MeshStandardMaterial
+          if (material.emissiveIntensity !== undefined) {
+            material.emissiveIntensity = leftEmissiveRef.current
+          }
+        }
+      })
     }
 
     if (rightGloveRef.current) {
       const rightVisuals = calculateDepthVisuals(rightGloveRef.current.position.z)
-      setRightEmissive((prev) => prev + (rightVisuals.emissive - prev) * 0.3)
-      setRightScale((prev) => prev + (rightVisuals.scale - prev) * 0.3)
+      rightEmissiveRef.current += (rightVisuals.emissive - rightEmissiveRef.current) * 0.3
+      rightScaleRef.current += (rightVisuals.scale - rightScaleRef.current) * 0.3
+      // Appliquer directement sur le groupe (avec miroir sur X)
+      rightGloveRef.current.scale.set(-rightScaleRef.current, rightScaleRef.current, rightScaleRef.current)
+      // Mettre à jour l'émissive sur tous les matériaux du groupe
+      rightGloveRef.current.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const material = (child as THREE.Mesh).material as THREE.MeshStandardMaterial
+          if (material.emissiveIntensity !== undefined) {
+            material.emissiveIntensity = rightEmissiveRef.current
+          }
+        }
+      })
     }
   })
 
@@ -745,24 +768,23 @@ export const Gloves = forwardRef<GlovesHandle>(function Gloves(_, ref) {
 
   return (
     <>
-      {/* Gant gauche */}
+      {/* Gant gauche - scale et emissive mis à jour dans useFrame */}
       <group
         ref={leftGloveRef}
         position={[REST_POSITION.left.x, REST_POSITION.left.y, REST_POSITION.left.z]}
         rotation={[0.3, 0.2, 0]}
-        scale={[leftScale, leftScale, leftScale]}
       >
-        <BoxingGlove color="#cc0000" emissiveIntensity={leftEmissive} />
+        <BoxingGlove color="#cc0000" emissiveIntensity={0} />
       </group>
 
-      {/* Gant droit */}
+      {/* Gant droit - scale (avec miroir) et emissive mis à jour dans useFrame */}
       <group
         ref={rightGloveRef}
         position={[REST_POSITION.right.x, REST_POSITION.right.y, REST_POSITION.right.z]}
         rotation={[0.3, -0.2, 0]}
-        scale={[-rightScale, rightScale, rightScale]} // Miroir pour le gant droit
+        scale={[-1, 1, 1]}
       >
-        <BoxingGlove color="#cc0000" emissiveIntensity={rightEmissive} />
+        <BoxingGlove color="#cc0000" emissiveIntensity={0} />
       </group>
     </>
   )

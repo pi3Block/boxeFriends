@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Cranium } from './parts/Cranium'
@@ -8,10 +8,10 @@ import { Nose } from './parts/Nose'
 import { Jaw } from './parts/Jaw'
 import { Ear } from './parts/Ear'
 import {
-  useImpactStore,
   useJellyPhysicsStore,
   useCartoonEffectsStore,
 } from '../../stores'
+import { useImpactListener } from '../../hooks/useImpactListener'
 import { HitZone } from '../../physics'
 
 interface JellyHeadOpponentProps {
@@ -56,10 +56,8 @@ function determineHitZone(hitPoint: [number, number, number]): HitZone {
  */
 export function JellyHeadOpponent({ textureUrl }: JellyHeadOpponentProps) {
   const groupRef = useRef<THREE.Group>(null)
-  const lastImpactIdRef = useRef<number>(-1)
 
   // Stores
-  const impacts = useImpactStore((s) => s.impacts)
   const { applyImpulse, step: physicsStep } = useJellyPhysicsStore()
   const {
     processHit,
@@ -73,26 +71,19 @@ export function JellyHeadOpponent({ textureUrl }: JellyHeadOpponentProps) {
     jawDetachProgress,
   } = useCartoonEffectsStore()
 
-  // Traiter les nouveaux impacts
-  useEffect(() => {
-    if (impacts.length === 0) return
-
-    const latest = impacts[impacts.length - 1]
-    if (!latest || latest.id === lastImpactIdRef.current) return
-
-    lastImpactIdRef.current = latest.id
-
+  // Traiter les nouveaux impacts via callback (pas de re-render React)
+  useImpactListener((impact) => {
     // Déterminer la zone touchée
-    const zone = determineHitZone(latest.hitPoint)
+    const zone = determineHitZone(impact.hitPoint)
 
     // Appliquer l'impulsion physique - FORCE AMPLIFIÉE x3
-    const hitPosition = new THREE.Vector3(...latest.hitPoint)
-    const force = new THREE.Vector3(0, 0, -latest.strength * 25)
-    applyImpulse(hitPosition, force, 0.8, zone, latest.strength)
+    const hitPosition = new THREE.Vector3(...impact.hitPoint)
+    const force = new THREE.Vector3(0, 0, -impact.strength * 25)
+    applyImpulse(hitPosition, force, 0.8, zone, impact.strength)
 
     // Déclencher les effets cartoon
-    processHit(zone, latest.strength)
-  }, [impacts, applyImpulse, processHit])
+    processHit(zone, impact.strength)
+  })
 
   // Boucle d'animation principale
   useFrame((_, delta) => {

@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
-import { useImpactStore, useFacialStore, useGameStore, ARKIT_BLEND_SHAPES, type BlendShapeName } from '../stores'
+import { ImpactManager, useFacialStore, useGameStore, ARKIT_BLEND_SHAPES, type BlendShapeName } from '../stores'
 import { useShallow } from 'zustand/react/shallow'
 import { HairSystem } from './HairSystem'
 
@@ -129,8 +129,7 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
   })
   const scene = gltf.scene
 
-  // Stores
-  const impacts = useImpactStore((state) => state.impacts)
+  // Stores - ImpactManager utilisé directement dans useFrame
   const gameState = useGameStore((state) => state.gameState)
   const opponentHp = useGameStore((state) => state.opponentHp)
 
@@ -328,7 +327,8 @@ export function FaceOpponent({ textureUrl }: FaceOpponentProps) {
       }
     }
 
-    // Détecter impacts et déclencher réaction faciale
+    // Détecter impacts et déclencher réaction faciale (lecture directe)
+    const impacts = ImpactManager.getImpacts()
     if (impacts.length > 0) {
       const latestImpact = impacts[impacts.length - 1]
       if (latestImpact && latestImpact.id !== lastImpactId.current) {

@@ -101,3 +101,5 @@ function MyComponent() {
 - Utilisez les hooks de React Three Fiber (`useFrame`, `useThree`, etc.) pour l'animation et l'interaction
 
 
+
+

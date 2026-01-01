@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Vector3 } from 'three'
-import { useGameStore, useImpactStore } from '../stores'
+import { useGameStore, ImpactManager } from '../stores'
 import type { PunchData } from './useGestureInput'
 import type { PunchType } from '../stores'
 
@@ -30,7 +30,7 @@ const CRITICAL_THRESHOLD = 0.85
  */
 export function useHitDetection() {
   const { camera, size } = useThree()
-  const addImpact = useImpactStore((state) => state.addImpact)
+  // ImpactManager.addImpact utilisé directement (pas de subscription React)
   const takeDamage = useGameStore((state) => state.takeDamage)
   const gameState = useGameStore((state) => state.gameState)
 
@@ -85,8 +85,8 @@ export function useHitDetection() {
       // Convertir la position écran en point d'impact 3D
       const hitPoint = screenToHitPoint(screenPosition[0], screenPosition[1])
 
-      // Ajouter l'impact visuel (déformation)
-      addImpact(hitPoint, impactStrength)
+      // Ajouter l'impact visuel (déformation) - pas de re-render React
+      ImpactManager.addImpact(hitPoint, impactStrength)
 
       // Appliquer les dégâts
       const damage = BASE_DAMAGE * typeMultiplier * velocity
@@ -99,7 +99,7 @@ export function useHitDetection() {
         )
       }
     },
-    [gameState, screenToHitPoint, addImpact, takeDamage]
+    [gameState, screenToHitPoint, takeDamage]
   )
 
   /**
@@ -118,12 +118,12 @@ export function useHitDetection() {
       const impactStrength = velocity * typeMultiplier
       const isCritical = impactStrength > CRITICAL_THRESHOLD
 
-      addImpact(hitPoint, impactStrength)
+      ImpactManager.addImpact(hitPoint, impactStrength)
 
       const damage = BASE_DAMAGE * typeMultiplier * velocity
       takeDamage(damage, isCritical)
     },
-    [gameState, addImpact, takeDamage]
+    [gameState, takeDamage]
   )
 
   return {
